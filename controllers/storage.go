@@ -57,6 +57,12 @@ func (r *TrustyAIServiceReconciler) createPV(ctx context.Context, instance *trus
 			AccessModes: []corev1.PersistentVolumeAccessMode{
 				corev1.ReadWriteOnce,
 			},
+			PersistentVolumeSource: corev1.PersistentVolumeSource{
+				NFS: &corev1.NFSVolumeSource{
+					Path:   "/tmp",
+					Server: "172.17.0.2",
+				},
+			},
 			StorageClassName: *instance.Spec.Storage.StorageClass,
 			// TODO: Add extra PV configuration
 		}
@@ -67,6 +73,12 @@ func (r *TrustyAIServiceReconciler) createPV(ctx context.Context, instance *trus
 			},
 			AccessModes: []corev1.PersistentVolumeAccessMode{
 				corev1.ReadWriteOnce,
+			},
+			PersistentVolumeSource: corev1.PersistentVolumeSource{
+				NFS: &corev1.NFSVolumeSource{
+					Path:   "/tmp",
+					Server: "172.17.0.2",
+				},
 			},
 			// TODO: Add extra PV configuration
 		}
