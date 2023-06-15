@@ -12,10 +12,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-const (
-	defaultPVSize = "5Gi" // Default size of the PV if not provided
-)
-
 func (r *TrustyAIServiceReconciler) ensurePV(ctx context.Context, instance *trustyaiopendatahubiov1alpha1.TrustyAIService) (*corev1.PersistentVolume, error) {
 	// If PV name is not provided, set it to cr.Name + "-pv"
 	pvName := instance.Name + "-pv"
@@ -26,6 +22,8 @@ func (r *TrustyAIServiceReconciler) ensurePV(ctx context.Context, instance *trus
 	// Create a PV object
 	pv := &corev1.PersistentVolume{}
 
+	defaultPVSize := string("5Gi") // Default size of the PV if not provided
+
 	// Try to get the PV
 	err := r.Get(ctx, types.NamespacedName{Name: pvName}, pv)
 	if err != nil {
@@ -35,7 +33,7 @@ func (r *TrustyAIServiceReconciler) ensurePV(ctx context.Context, instance *trus
 			// If a size is not specified, use the default size
 			if instance.Spec.Storage.Size == nil {
 				log.FromContext(ctx).Info("Creating PV with " + defaultPVSize + " size.")
-				*instance.Spec.Storage.Size = defaultPVSize
+				instance.Spec.Storage.Size = &defaultPVSize
 			} // Create the PV
 			return r.createPV(ctx, instance, pvName)
 		}
