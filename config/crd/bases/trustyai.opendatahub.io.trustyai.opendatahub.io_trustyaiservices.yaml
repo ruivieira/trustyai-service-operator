@@ -66,6 +66,8 @@ spec:
                     type: string
                   size:
                     type: string
+                  storageClass:
+                    type: string
                 required:
                 - folder
                 - format

@@ -34,7 +34,8 @@ func (r *TrustyAIServiceReconciler) ensurePV(ctx context.Context, instance *trus
 			if instance.Spec.Storage.Size == nil {
 				log.FromContext(ctx).Info("Creating PV with " + defaultPVSize + " size.")
 				instance.Spec.Storage.Size = &defaultPVSize
-			} // Create the PV
+			}
+			// Create the PV
 			return r.createPV(ctx, instance, pvName)
 		}
 		log.FromContext(ctx).Error(err, "Error getting PV")
@@ -46,6 +47,11 @@ func (r *TrustyAIServiceReconciler) ensurePV(ctx context.Context, instance *trus
 }
 
 func (r *TrustyAIServiceReconciler) createPV(ctx context.Context, instance *trustyaiopendatahubiov1alpha1.TrustyAIService, pvName string) (*corev1.PersistentVolume, error) {
+	storageClassName := ""
+	if instance.Spec.Storage.StorageClass != nil {
+		storageClassName = *instance.Spec.Storage.StorageClass
+	}
+
 	pv := &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: pvName,
@@ -57,6 +63,8 @@ func (r *TrustyAIServiceReconciler) createPV(ctx context.Context, instance *trus
 			AccessModes: []corev1.PersistentVolumeAccessMode{
 				corev1.ReadWriteOnce,
 			},
+			// The storage class
+			StorageClassName: storageClassName,
 			// TODO: Add extra PV configuration
 		},
 	}
