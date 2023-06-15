@@ -60,13 +60,7 @@ func (r *TrustyAIServiceReconciler) createPV(ctx context.Context, instance *trus
 			// TODO: Add extra PV configuration
 		},
 	}
-
-	// Set TrustyAIService instance as the owner and controller
-	if err := ctrl.SetControllerReference(instance, pv, r.Scheme); err != nil {
-		log.FromContext(ctx).Error(err, "Error setting "+instance.Name+" as owner of the PV")
-		return nil, err
-	}
-
+	
 	// Create the PV
 	if err := r.Create(ctx, pv); err != nil {
 		log.FromContext(ctx).Error(err, "Error creating the PV")
