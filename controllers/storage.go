@@ -60,7 +60,7 @@ func (r *TrustyAIServiceReconciler) createPV(ctx context.Context, instance *trus
 			// TODO: Add extra PV configuration
 		},
 	}
-	
+
 	// Create the PV
 	if err := r.Create(ctx, pv); err != nil {
 		log.FromContext(ctx).Error(err, "Error creating the PV")
