@@ -69,8 +69,6 @@ spec:
                 required:
                 - folder
                 - format
-                - pv
-                - size
                 type: object
             required:
             - data
