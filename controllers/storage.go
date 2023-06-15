@@ -47,26 +47,36 @@ func (r *TrustyAIServiceReconciler) ensurePV(ctx context.Context, instance *trus
 }
 
 func (r *TrustyAIServiceReconciler) createPV(ctx context.Context, instance *trustyaiopendatahubiov1alpha1.TrustyAIService, pvName string) (*corev1.PersistentVolume, error) {
-	storageClassName := ""
-	if instance.Spec.Storage.StorageClass != nil {
-		storageClassName = *instance.Spec.Storage.StorageClass
-	}
+	var pvSpec corev1.PersistentVolumeSpec
 
-	pv := &corev1.PersistentVolume{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: pvName,
-		},
-		Spec: corev1.PersistentVolumeSpec{
+	if instance.Spec.Storage.StorageClass != nil {
+		pvSpec = corev1.PersistentVolumeSpec{
 			Capacity: corev1.ResourceList{
 				corev1.ResourceStorage: resource.MustParse(*instance.Spec.Storage.Size),
 			},
 			AccessModes: []corev1.PersistentVolumeAccessMode{
 				corev1.ReadWriteOnce,
 			},
-			// The storage class
-			StorageClassName: storageClassName,
+			StorageClassName: *instance.Spec.Storage.StorageClass,
 			// TODO: Add extra PV configuration
+		}
+	} else {
+		pvSpec = corev1.PersistentVolumeSpec{
+			Capacity: corev1.ResourceList{
+				corev1.ResourceStorage: resource.MustParse(*instance.Spec.Storage.Size),
+			},
+			AccessModes: []corev1.PersistentVolumeAccessMode{
+				corev1.ReadWriteOnce,
+			},
+			// TODO: Add extra PV configuration
+		}
+	}
+
+	pv := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: pvName,
 		},
+		Spec: pvSpec,
 	}
 
 	// Create the PV
