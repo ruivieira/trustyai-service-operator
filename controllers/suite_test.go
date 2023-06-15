@@ -63,6 +63,8 @@ func TestAPIs(t *testing.T) {
 }
 
 func createDefaultCR() *trustyaiopendatahubiov1alpha1.TrustyAIService {
+	pvName := string("mypv")
+	pvSize := string("1Gi")
 	service := trustyaiopendatahubiov1alpha1.TrustyAIService{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -72,8 +74,8 @@ func createDefaultCR() *trustyaiopendatahubiov1alpha1.TrustyAIService {
 			Storage: trustyaiopendatahubiov1alpha1.StorageSpec{
 				Format: "PVC",
 				Folder: "/data",
-				PV:     "mypv",
-				Size:   "1Gi",
+				PV:     &pvName,
+				Size:   &pvSize,
 			},
 			Data: trustyaiopendatahubiov1alpha1.DataSpec{
 				Filename: "data.csv",
