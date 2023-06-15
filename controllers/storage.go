@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 	trustyaiopendatahubiov1alpha1 "github.com/ruivieira/trustyai-service-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -13,9 +12,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+const (
+	defaultPVSize = "5Gi" // Default size of the PV if not provided
+)
+
 func (r *TrustyAIServiceReconciler) ensurePV(ctx context.Context, instance *trustyaiopendatahubiov1alpha1.TrustyAIService) (*corev1.PersistentVolume, error) {
-	// Extract the PV name from the instance spec
-	pvName := instance.Spec.Storage.PV
+	// If PV name is not provided, set it to cr.Name + "-pv"
+	pvName := instance.Name + "-pv"
+	if instance.Spec.Storage.PV != nil {
+		pvName = *instance.Spec.Storage.PV
+	}
 
 	// Create a PV object
 	pv := &corev1.PersistentVolume{}
@@ -23,14 +29,52 @@ func (r *TrustyAIServiceReconciler) ensurePV(ctx context.Context, instance *trus
 	// Try to get the PV
 	err := r.Get(ctx, types.NamespacedName{Name: pvName}, pv)
 	if err != nil {
-		// If an error occurs while getting the PV, return the error
+		// If the PV is not found
 		if apierrors.IsNotFound(err) {
-			return nil, fmt.Errorf("PersistentVolume %s not found", pvName)
+			log.FromContext(ctx).Info("PV not found. Creating.")
+			// If a size is not specified, use the default size
+			if instance.Spec.Storage.Size == nil {
+				log.FromContext(ctx).Info("Creating PV with " + defaultPVSize + " size.")
+				*instance.Spec.Storage.Size = defaultPVSize
+			} // Create the PV
+			return r.createPV(ctx, instance, pvName)
 		}
+		log.FromContext(ctx).Error(err, "Error getting PV")
 		return nil, err
 	}
 
 	// If the PV exists, return its reference
+	return pv, nil
+}
+
+func (r *TrustyAIServiceReconciler) createPV(ctx context.Context, instance *trustyaiopendatahubiov1alpha1.TrustyAIService, pvName string) (*corev1.PersistentVolume, error) {
+	pv := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: pvName,
+		},
+		Spec: corev1.PersistentVolumeSpec{
+			Capacity: corev1.ResourceList{
+				corev1.ResourceStorage: resource.MustParse(*instance.Spec.Storage.Size),
+			},
+			AccessModes: []corev1.PersistentVolumeAccessMode{
+				corev1.ReadWriteOnce,
+			},
+			// TODO: Add extra PV configuration
+		},
+	}
+
+	// Set TrustyAIService instance as the owner and controller
+	if err := ctrl.SetControllerReference(instance, pv, r.Scheme); err != nil {
+		log.FromContext(ctx).Error(err, "Error setting "+instance.Name+" as owner of the PV")
+		return nil, err
+	}
+
+	// Create the PV
+	if err := r.Create(ctx, pv); err != nil {
+		log.FromContext(ctx).Error(err, "Error creating the PV")
+		return nil, err
+	}
+
 	return pv, nil
 }
 
@@ -66,7 +110,7 @@ func (r *TrustyAIServiceReconciler) createPVC(ctx context.Context, instance *tru
 			},
 			Resources: corev1.ResourceRequirements{
 				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: resource.MustParse(instance.Spec.Storage.Size),
+					corev1.ResourceStorage: resource.MustParse(*instance.Spec.Storage.Size),
 				},
 			},
 			StorageClassName: &storageClass,
