@@ -138,31 +138,26 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	instance.Status.Phase = "Not Ready"
 	instance.Status.Ready = corev1.ConditionFalse
 
+	if err = r.updateCondition(ctx,
+		instance, "TrustyAIAvailable", corev1.ConditionFalse,
+		"TrustyAINotReady", "TrustyAI resources not ready"); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	// Ensure PVC
 	err = r.ensurePVC(ctx, instance)
 	if err != nil {
 		// PVC not found condition
-		pvcAvailableCondition := trustyaiopendatahubiov1alpha1.Condition{
-			Type:    "PVCAvailable",
-			Status:  corev1.ConditionFalse,
-			Reason:  "PVCNotFound",
-			Message: "PersistentVolumeClaim not found",
+		if err = r.updateCondition(ctx,
+			instance, "PVCAvailable", corev1.ConditionFalse,
+			"PVCNotFound", "PersistentVolumeClaim not found"); err != nil {
+			return ctrl.Result{}, err
 		}
 		log.FromContext(ctx).Error(err, "Error creating PVC storage.")
-
-		// Set the condition
-		if err = r.setCondition(instance, pvcAvailableCondition); err != nil {
-			log.FromContext(ctx).Error(err, "Failed to set condition")
-		}
 
 		// Update the instance status to Not Ready
 		instance.Status.Phase = "Not Ready"
 		instance.Status.Ready = corev1.ConditionFalse
-
-		// Update the status subresource
-		if updateErr := r.Status().Update(ctx, instance); updateErr != nil {
-			log.FromContext(ctx).Error(updateErr, "Failed to update TrustyAIService status")
-		}
 
 		// If there was an error finding the PV, requeue the request
 		log.FromContext(ctx).Error(err, "Could not find requested PersistentVolumeClaim.")
@@ -170,16 +165,10 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	} else {
 		// Set the conditions appropriately
-		pvcAvailableCondition := trustyaiopendatahubiov1alpha1.Condition{
-			Type:    "PVCAvailable",
-			Status:  corev1.ConditionTrue,
-			Reason:  "PVCFound",
-			Message: "PersistentVolumeClaim found",
-		}
-
-		if setConditionErr := r.setCondition(instance, pvcAvailableCondition); setConditionErr != nil {
-			log.FromContext(ctx).Error(setConditionErr, "Failed to set condition")
-			return ctrl.Result{}, setConditionErr
+		if err = r.updateCondition(ctx,
+			instance, "PVCAvailable", corev1.ConditionTrue,
+			"PVCFound", "PersistentVolumeClaim found"); err != nil {
+			return ctrl.Result{}, err
 		}
 	}
 
@@ -196,6 +185,11 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	if !allPodsRunning {
+		if err = r.updateCondition(ctx,
+			instance, "TrustyAIServiceReady", corev1.ConditionTrue,
+			"PodsNotReady", "Not all pods are running"); err != nil {
+			return ctrl.Result{}, err
+		}
 		log.FromContext(ctx).Info("Not all pods are running, requeue the reconcile request")
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
@@ -244,6 +238,25 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	_, err = r.patchEnvVarsByLabelForDeployments(ctx, req.Namespace, modelMeshLabelKey, modelMeshLabelValue, payloadProcessorName, req.Name, false)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Could not patch environment variables for Deployments.")
+		// ModelMesh not configured condition
+		if err = r.updateCondition(ctx, instance,
+			"ModelMeshConfigured", corev1.ConditionFalse,
+			"ModelMeshNotConfigured", "Could not configure ModelMesh"); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, err
+	} else {
+		// ModelMesh configured condition
+		if err = r.updateCondition(ctx, instance,
+			"ModelMeshConfigured", corev1.ConditionTrue,
+			"ModelMeshConfigured", "ModelMesh configured"); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	if err = r.updateCondition(ctx, instance,
+		"TrustyAIServiceReady", corev1.ConditionTrue,
+		"TrustyAIServiceReady", "TrustyAI service ready"); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -384,56 +397,8 @@ func (r *TrustyAIServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *TrustyAIServiceReconciler) reconcileStatuses(instance *trustyaiopendatahubiov1alpha1.TrustyAIService, ctx context.Context) error {
-	deploymentList := &appsv1.DeploymentList{}
-	labelSelector := client.MatchingLabels{"app.kubernetes.io/name": "modelmesh-controller"}
-	err := r.Client.List(ctx, deploymentList, client.InNamespace("modelmesh-serving"), labelSelector)
-
-	var condition trustyaiopendatahubiov1alpha1.Condition
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Error creating condition.")
-		return err
-	}
-
-	if len(deploymentList.Items) == 0 {
-		// No deployments found with the given label
-		condition = trustyaiopendatahubiov1alpha1.Condition{
-			Type:               "ModelMeshReady",
-			Status:             "False",
-			LastTransitionTime: metav1.Now(),
-			Reason:             "ModelMeshNotPresent",
-			Message:            "ModelMesh operator Deployment not found",
-		}
-	} else {
-		// We'll just check the first deployment found
-		deployment := &deploymentList.Items[0]
-		// The Deployment exists, check if it's ready
-		if isDeploymentReady(deployment) {
-			condition = trustyaiopendatahubiov1alpha1.Condition{
-				Type:               "ModelMeshReady",
-				Status:             "True",
-				LastTransitionTime: metav1.Now(),
-				Reason:             "ModelMeshHealthy",
-				Message:            "ModelMesh operator is running and healthy",
-			}
-		} else {
-			condition = trustyaiopendatahubiov1alpha1.Condition{
-				Type:               "ModelMeshReady",
-				Status:             "False",
-				LastTransitionTime: metav1.Now(),
-				Reason:             "ModelMeshNotHealthy",
-				Message:            "ModelMesh operator Deployment is not healthy",
-			}
-		}
-	}
-
-	// Update the condition
-	if err = r.setCondition(instance, condition); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to set condition")
-		return err
-	}
-
 	// Update the status of the custom resource
-	err = r.Status().Update(ctx, instance)
+	err := r.Status().Update(ctx, instance)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Error updating conditions.")
 		return err

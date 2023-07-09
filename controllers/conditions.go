@@ -11,6 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// setCondition sets the status condition of the CR, guaranteeing that there are no duplicates
 func (r *TrustyAIServiceReconciler) setCondition(instance *trustyaiopendatahubiov1alpha1.TrustyAIService, condition trustyaiopendatahubiov1alpha1.Condition) error {
 	condition.LastTransitionTime = metav1.Now()
 
@@ -24,6 +25,24 @@ func (r *TrustyAIServiceReconciler) setCondition(instance *trustyaiopendatahubio
 	}
 
 	instance.Status.Conditions = append(instance.Status.Conditions, condition)
+	return nil
+}
+
+// updateCondition updates the status condition of the CR
+func (r *TrustyAIServiceReconciler) updateCondition(ctx context.Context, instance *trustyaiopendatahubiov1alpha1.TrustyAIService, conditionType string, status corev1.ConditionStatus, reason string, message string) error {
+	condition := trustyaiopendatahubiov1alpha1.Condition{
+		Type:    conditionType,
+		Status:  status,
+		Reason:  reason,
+		Message: message,
+	}
+	if err := r.setCondition(instance, condition); err != nil {
+		return err
+	}
+	if err := r.Status().Update(ctx, instance); err != nil {
+		log.FromContext(ctx).Error(err, "Failed to update TrustyAIService status")
+		return err
+	}
 	return nil
 }
 
