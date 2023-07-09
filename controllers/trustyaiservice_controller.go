@@ -133,43 +133,19 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	}
 
-	// Update the instance status to Not Ready
-	if err = r.updateStatus(ctx, req, "Not Ready", corev1.ConditionFalse); err != nil {
-		return RequeueWithError(err)
-	}
-
-	if err = r.updateCondition(ctx, req,
-		trustyAIAvailableConditionType, corev1.ConditionFalse,
-		"TrustyAINotReady", "TrustyAI resources not ready"); err != nil {
-		return RequeueWithError(err)
-	}
-
 	// Ensure PVC
 	err = r.ensurePVC(ctx, instance)
 	if err != nil {
 		// PVC not found condition
-		if err = r.updateCondition(ctx, req,
-			pvcAvailableConditionType, corev1.ConditionFalse,
-			"PVCNotFound", "PersistentVolumeClaim not found"); err != nil {
-			return RequeueWithError(err)
-		}
-		log.FromContext(ctx).Error(err, "Error creating PVC storage.")
-
-		// Update the instance status to Not Ready
-		instance.Status.Phase = "Not Ready"
-		instance.Status.Ready = corev1.ConditionFalse
-
-		// If there was an error finding the PV, requeue the request
 		log.FromContext(ctx).Error(err, "Could not find requested PersistentVolumeClaim.")
-		return RequeueWithError(err)
-
+		_ = r.updateCondition(ctx, req,
+			pvcAvailableConditionType, corev1.ConditionFalse,
+			"PVCNotFound", "PersistentVolumeClaim not found")
 	} else {
 		// Set the conditions appropriately
-		if err = r.updateCondition(ctx, req,
+		_ = r.updateCondition(ctx, req,
 			pvcAvailableConditionType, corev1.ConditionTrue,
-			"PVCFound", "PersistentVolumeClaim found"); err != nil {
-			return RequeueWithError(err)
-		}
+			"PVCFound", "PersistentVolumeClaim found")
 	}
 
 	// Ensure Deployment object
@@ -219,19 +195,14 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Could not patch environment variables for Deployments.")
 		// ModelMesh not configured condition
-		if err = r.updateCondition(ctx, req,
+		_ = r.updateCondition(ctx, req,
 			modelMeshConfiguredConditionType, corev1.ConditionFalse,
-			"ModelMeshNotConfigured", "Could not configure ModelMesh"); err != nil {
-			return RequeueWithError(err)
-		}
-		return RequeueWithError(err)
+			"ModelMeshNotConfigured", "Could not configure ModelMesh")
 	} else {
 		// ModelMesh configured condition
-		if err = r.updateCondition(ctx, req,
+		_ = r.updateCondition(ctx, req,
 			modelMeshConfiguredConditionType, corev1.ConditionTrue,
-			"ModelMeshConfigured", "ModelMesh configured"); err != nil {
-			return RequeueWithError(err)
-		}
+			"ModelMeshConfigured", "ModelMesh configured")
 	}
 
 	// Update the instance status to Ready
@@ -239,11 +210,9 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return RequeueWithError(err)
 	}
 
-	if err = r.updateCondition(ctx, req,
+	_ = r.updateCondition(ctx, req,
 		trustyAIAvailableConditionType, corev1.ConditionTrue,
-		"TrustyAIServiceReady", "TrustyAI service ready"); err != nil {
-		return RequeueWithError(err)
-	}
+		"TrustyAIServiceReady", "TrustyAI service ready")
 
 	// Deployment already exists - don't requeue
 	return DoNotRequeue()
