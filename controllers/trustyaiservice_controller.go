@@ -139,7 +139,7 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	instance.Status.Ready = corev1.ConditionFalse
 
 	if err = r.updateCondition(ctx,
-		instance, "TrustyAIAvailable", corev1.ConditionFalse,
+		instance, trustyAIAvailableConditionType, corev1.ConditionFalse,
 		"TrustyAINotReady", "TrustyAI resources not ready"); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -149,7 +149,7 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if err != nil {
 		// PVC not found condition
 		if err = r.updateCondition(ctx,
-			instance, "PVCAvailable", corev1.ConditionFalse,
+			instance, pvcAvailableConditionType, corev1.ConditionFalse,
 			"PVCNotFound", "PersistentVolumeClaim not found"); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -166,7 +166,7 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	} else {
 		// Set the conditions appropriately
 		if err = r.updateCondition(ctx,
-			instance, "PVCAvailable", corev1.ConditionTrue,
+			instance, pvcAvailableConditionType, corev1.ConditionTrue,
 			"PVCFound", "PersistentVolumeClaim found"); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -186,7 +186,7 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	if !allPodsRunning {
 		if err = r.updateCondition(ctx,
-			instance, "TrustyAIServiceReady", corev1.ConditionTrue,
+			instance, trustyAIAvailableConditionType, corev1.ConditionFalse,
 			"PodsNotReady", "Not all pods are running"); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -240,7 +240,7 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		log.FromContext(ctx).Error(err, "Could not patch environment variables for Deployments.")
 		// ModelMesh not configured condition
 		if err = r.updateCondition(ctx, instance,
-			"ModelMeshConfigured", corev1.ConditionFalse,
+			modelMeshConfiguredConditionType, corev1.ConditionFalse,
 			"ModelMeshNotConfigured", "Could not configure ModelMesh"); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -248,14 +248,14 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	} else {
 		// ModelMesh configured condition
 		if err = r.updateCondition(ctx, instance,
-			"ModelMeshConfigured", corev1.ConditionTrue,
+			modelMeshConfiguredConditionType, corev1.ConditionTrue,
 			"ModelMeshConfigured", "ModelMesh configured"); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
 	if err = r.updateCondition(ctx, instance,
-		"TrustyAIServiceReady", corev1.ConditionTrue,
+		trustyAIAvailableConditionType, corev1.ConditionTrue,
 		"TrustyAIServiceReady", "TrustyAI service ready"); err != nil {
 		return ctrl.Result{}, err
 	}

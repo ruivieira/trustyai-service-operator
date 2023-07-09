@@ -11,6 +11,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+const (
+	trustyAIAvailableConditionType   = "TrustyAIAvailable"
+	pvcAvailableConditionType        = "PVCAvailable"
+	modelMeshConfiguredConditionType = "ModelMeshConfigured"
+)
+
 // setCondition sets the status condition of the CR, guaranteeing that there are no duplicates
 func (r *TrustyAIServiceReconciler) setCondition(instance *trustyaiopendatahubiov1alpha1.TrustyAIService, condition trustyaiopendatahubiov1alpha1.Condition) error {
 	condition.LastTransitionTime = metav1.Now()
