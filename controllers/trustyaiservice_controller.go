@@ -31,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -257,22 +256,9 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, err
 	}
 
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		// Fetch the latest version of the object
-		if err := r.Get(ctx, req.NamespacedName, instance); err != nil {
-			return err
-		}
-
-		// At the end of reconcile, update the instance status to Ready
-		instance.Status.Phase = "Ready"
-		instance.Status.Ready = corev1.ConditionTrue
-
-		// Attempt to update
-		return r.Status().Update(ctx, instance)
-	})
-
+	err = r.reconcileStatuses(instance, ctx)
 	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update TrustyAIService status")
+		log.FromContext(ctx).Error(err, "Could not reconcile statuses.")
 		return ctrl.Result{}, err
 	}
 
