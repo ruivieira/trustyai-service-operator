@@ -36,7 +36,13 @@ func (r *TrustyAIServiceReconciler) setCondition(instance *trustyaiopendatahubio
 }
 
 // updateCondition updates the status condition of the CR
-func (r *TrustyAIServiceReconciler) updateCondition(ctx context.Context, req ctrl.Request, instance *trustyaiopendatahubiov1alpha1.TrustyAIService, conditionType string, status corev1.ConditionStatus, reason string, message string) error {
+func (r *TrustyAIServiceReconciler) updateCondition(ctx context.Context, req ctrl.Request, conditionType string, status corev1.ConditionStatus, reason string, message string) error {
+	instance := &trustyaiopendatahubiov1alpha1.TrustyAIService{}
+	err := r.Get(ctx, req.NamespacedName, instance)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to get latest version of TrustyAIService")
+		return err
+	}
 	condition := trustyaiopendatahubiov1alpha1.Condition{
 		Type:    conditionType,
 		Status:  status,
@@ -85,14 +91,4 @@ func (r *TrustyAIServiceReconciler) allPodsRunning(ctx context.Context, req ctrl
 		}
 	}
 	return allPodsRunning, nil
-}
-
-func (r *TrustyAIServiceReconciler) reconcileStatuses(instance *trustyaiopendatahubiov1alpha1.TrustyAIService, ctx context.Context) error {
-	// Update the status of the custom resource
-	err := r.Status().Update(ctx, instance)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Error updating conditions.")
-		return err
-	}
-	return nil
 }

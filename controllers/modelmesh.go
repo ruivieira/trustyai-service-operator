@@ -3,8 +3,10 @@ package controllers
 import (
 	"context"
 	"fmt"
+	trustyaiopendatahubiov1alpha1 "github.com/trustyai-explainability/trustyai-service-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"strings"
 )
@@ -112,4 +114,27 @@ func generateEnvVarValue(currentValue, newValue string, remove bool) string {
 	}
 
 	return currentValue
+}
+
+// updateStatus updates the status of the instance in Kubernetes.
+func (r *TrustyAIServiceReconciler) updateStatus(ctx context.Context, req ctrl.Request, phase string, ready corev1.ConditionStatus) error {
+	// Fetch the latest version of the instance
+	instance := &trustyaiopendatahubiov1alpha1.TrustyAIService{}
+	err := r.Get(ctx, req.NamespacedName, instance)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to get latest version of TrustyAIService")
+		return err
+	}
+
+	// Update the status
+	instance.Status.Phase = phase
+	instance.Status.Ready = ready
+
+	// Update the instance in Kubernetes
+	if err := r.Status().Update(ctx, instance); err != nil {
+		log.FromContext(ctx).Error(err, "Failed to update TrustyAIService status")
+		return err
+	}
+
+	return nil
 }

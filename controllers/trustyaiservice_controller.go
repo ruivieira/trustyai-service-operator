@@ -134,11 +134,12 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// Update the instance status to Not Ready
-	instance.Status.Phase = "Not Ready"
-	instance.Status.Ready = corev1.ConditionFalse
+	if err = r.updateStatus(ctx, req, "Not Ready", corev1.ConditionFalse); err != nil {
+		return RequeueWithError(err)
+	}
 
 	if err = r.updateCondition(ctx, req,
-		instance, trustyAIAvailableConditionType, corev1.ConditionFalse,
+		trustyAIAvailableConditionType, corev1.ConditionFalse,
 		"TrustyAINotReady", "TrustyAI resources not ready"); err != nil {
 		return RequeueWithError(err)
 	}
@@ -148,7 +149,7 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if err != nil {
 		// PVC not found condition
 		if err = r.updateCondition(ctx, req,
-			instance, pvcAvailableConditionType, corev1.ConditionFalse,
+			pvcAvailableConditionType, corev1.ConditionFalse,
 			"PVCNotFound", "PersistentVolumeClaim not found"); err != nil {
 			return RequeueWithError(err)
 		}
@@ -165,7 +166,7 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	} else {
 		// Set the conditions appropriately
 		if err = r.updateCondition(ctx, req,
-			instance, pvcAvailableConditionType, corev1.ConditionTrue,
+			pvcAvailableConditionType, corev1.ConditionTrue,
 			"PVCFound", "PersistentVolumeClaim found"); err != nil {
 			return RequeueWithError(err)
 		}
@@ -218,7 +219,7 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Could not patch environment variables for Deployments.")
 		// ModelMesh not configured condition
-		if err = r.updateCondition(ctx, req, instance,
+		if err = r.updateCondition(ctx, req,
 			modelMeshConfiguredConditionType, corev1.ConditionFalse,
 			"ModelMeshNotConfigured", "Could not configure ModelMesh"); err != nil {
 			return RequeueWithError(err)
@@ -226,26 +227,19 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return RequeueWithError(err)
 	} else {
 		// ModelMesh configured condition
-		if err = r.updateCondition(ctx, req, instance,
+		if err = r.updateCondition(ctx, req,
 			modelMeshConfiguredConditionType, corev1.ConditionTrue,
 			"ModelMeshConfigured", "ModelMesh configured"); err != nil {
 			return RequeueWithError(err)
 		}
 	}
 
-	// Fetch the latest version of the TrustyAIService object
-	latestInstance := &trustyaiopendatahubiov1alpha1.TrustyAIService{}
-	err = r.Get(ctx, req.NamespacedName, latestInstance)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to get latest version of TrustyAIService")
+	// Update the instance status to Ready
+	if err = r.updateStatus(ctx, req, "Ready", corev1.ConditionTrue); err != nil {
 		return RequeueWithError(err)
 	}
 
-	// Update the instance status to Ready
-	instance.Status.Phase = "Ready"
-	instance.Status.Ready = corev1.ConditionTrue
-
-	if err = r.updateCondition(ctx, req, latestInstance,
+	if err = r.updateCondition(ctx, req,
 		trustyAIAvailableConditionType, corev1.ConditionTrue,
 		"TrustyAIServiceReady", "TrustyAI service ready"); err != nil {
 		return RequeueWithError(err)
