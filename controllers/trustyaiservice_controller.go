@@ -91,7 +91,7 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	_ = log.FromContext(ctx)
 	// Fetch the AppService instance
 	instance := &trustyaiopendatahubiov1alpha1.TrustyAIService{}
-	err := r.Get(context.TODO(), req.NamespacedName, instance)
+	err := r.Get(ctx, req.NamespacedName, instance)
 	if err != nil {
 		// Handle error
 		if errors.IsNotFound(err) {
@@ -132,20 +132,6 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			log.FromContext(ctx).Error(err, "Failed to add the finalizer.")
 			return ctrl.Result{}, err
 		}
-	}
-
-	instance.Status.Ready = corev1.ConditionTrue
-
-	// CR found, add or update the URL
-	// Call the function to patch environment variables for Deployments that match the label
-	shouldContinue, err := r.patchEnvVarsByLabelForDeployments(ctx, req.Namespace, modelMeshLabelKey, modelMeshLabelValue, payloadProcessorName, req.Name, false)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Could not patch environment variables for Deployments.")
-		return ctrl.Result{}, err
-	}
-	if !shouldContinue {
-		log.FromContext(ctx).Info("Not all replicas are ready, requeue the reconcile request")
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
 	// Update the instance status to Not Ready
@@ -203,6 +189,17 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, err
 	}
 
+	allPodsRunning, err := r.allPodsRunning(ctx, req, instance)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Could not check if all pods are running.")
+		return ctrl.Result{}, err
+	}
+
+	if !allPodsRunning {
+		log.FromContext(ctx).Info("Not all pods are running, requeue the reconcile request")
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
+
 	// Fetch the TrustyAIService instance
 	trustyAIServiceService := &trustyaiopendatahubiov1alpha1.TrustyAIService{}
 	err = r.Get(ctx, req.NamespacedName, trustyAIServiceService)
@@ -241,6 +238,14 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// At the end of reconcile, update the instance status to Ready
 	instance.Status.Phase = "Ready"
 	instance.Status.Ready = corev1.ConditionTrue
+
+	// CR found, add or update the URL
+	// Call the function to patch environment variables for Deployments that match the label
+	_, err = r.patchEnvVarsByLabelForDeployments(ctx, req.Namespace, modelMeshLabelKey, modelMeshLabelValue, payloadProcessorName, req.Name, false)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Could not patch environment variables for Deployments.")
+		return ctrl.Result{}, err
+	}
 
 	// Populate statuses
 	if err = r.reconcileStatuses(instance, ctx); err != nil {
