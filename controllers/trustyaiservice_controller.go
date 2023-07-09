@@ -156,10 +156,6 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
-	// Update the instance status to Not Ready
-	instance.Status.Phase = "Not Ready"
-	instance.Status.Ready = corev1.ConditionFalse
-
 	// Ensure PVC
 	err = r.ensurePVC(ctx, instance)
 	if err != nil {
@@ -176,10 +172,6 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		if err = r.setCondition(instance, pvcAvailableCondition); err != nil {
 			log.FromContext(ctx).Error(err, "Failed to set condition")
 		}
-
-		// Update the instance status to Not Ready
-		instance.Status.Phase = "Not Ready"
-		instance.Status.Ready = corev1.ConditionFalse
 
 		// Update the status subresource
 		if updateErr := r.Status().Update(ctx, instance); updateErr != nil {
