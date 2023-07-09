@@ -134,6 +134,16 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	}
 
+	// Initially set status to Not Ready
+	if instance.Status.Phase != "Ready" {
+		instance.Status.Phase = "Not Ready"
+		instance.Status.Ready = corev1.ConditionFalse
+		if err := r.Status().Update(ctx, instance); err != nil {
+			log.FromContext(ctx).Error(err, "Failed to update TrustyAIService status")
+			return ctrl.Result{}, err
+		}
+	}
+
 	// CR found, add or update the URL
 	// Call the function to patch environment variables for Deployments that match the label
 	shouldContinue, err := r.patchEnvVarsByLabelForDeployments(ctx, req.Namespace, modelMeshLabelKey, modelMeshLabelValue, payloadProcessorName, req.Name, false)
