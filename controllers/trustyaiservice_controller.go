@@ -34,7 +34,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"time"
 )
 
 var ErrPVCNotReady = goerrors.New("PVC is not ready")
@@ -177,23 +176,7 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if err != nil {
 		return RequeueWithError(err)
 	}
-
-	allPodsRunning, err := r.allPodsRunning(ctx, req, instance)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Could not check if all pods are running.")
-		return RequeueWithError(err)
-	}
-
-	if !allPodsRunning {
-		if err = r.updateCondition(ctx, req,
-			instance, trustyAIAvailableConditionType, corev1.ConditionFalse,
-			"PodsNotReady", "Not all pods are running"); err != nil {
-			return RequeueWithError(err)
-		}
-		log.FromContext(ctx).Info("Not all pods are running, requeue the reconcile request")
-		return RequeueAfterDurationWithError(time.Minute, err)
-	}
-
+	
 	// Fetch the TrustyAIService instance
 	trustyAIServiceService := &trustyaiopendatahubiov1alpha1.TrustyAIService{}
 	err = r.Get(ctx, req.NamespacedName, trustyAIServiceService)
