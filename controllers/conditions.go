@@ -82,3 +82,13 @@ func (r *TrustyAIServiceReconciler) allPodsRunning(ctx context.Context, req ctrl
 	}
 	return allPodsRunning, nil
 }
+
+func (r *TrustyAIServiceReconciler) reconcileStatuses(instance *trustyaiopendatahubiov1alpha1.TrustyAIService, ctx context.Context) error {
+	// Update the status of the custom resource
+	err := r.Status().Update(ctx, instance)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Error updating conditions.")
+		return err
+	}
+	return nil
+}

@@ -229,10 +229,6 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, err
 	}
 
-	// At the end of reconcile, update the instance status to Ready
-	instance.Status.Phase = "Ready"
-	instance.Status.Ready = corev1.ConditionTrue
-
 	// CR found, add or update the URL
 	// Call the function to patch environment variables for Deployments that match the label
 	_, err = r.patchEnvVarsByLabelForDeployments(ctx, req.Namespace, modelMeshLabelKey, modelMeshLabelValue, payloadProcessorName, req.Name, false)
@@ -260,9 +256,13 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, err
 	}
 
-	// Populate statuses
-	if err = r.reconcileStatuses(instance, ctx); err != nil {
-		log.FromContext(ctx).Error(err, "Error creating the statuses.")
+	// At the end of reconcile, update the instance status to Ready
+	instance.Status.Phase = "Ready"
+	instance.Status.Ready = corev1.ConditionTrue
+
+	// Update the Status subresource with the changes.
+	if err := r.Status().Update(ctx, instance); err != nil {
+		log.FromContext(ctx).Error(err, "Failed to update TrustyAIService status")
 		return ctrl.Result{}, err
 	}
 
@@ -394,16 +394,6 @@ func (r *TrustyAIServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&trustyaiopendatahubiov1alpha1.TrustyAIService{}).
 		Complete(r)
-}
-
-func (r *TrustyAIServiceReconciler) reconcileStatuses(instance *trustyaiopendatahubiov1alpha1.TrustyAIService, ctx context.Context) error {
-	// Update the status of the custom resource
-	err := r.Status().Update(ctx, instance)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Error updating conditions.")
-		return err
-	}
-	return nil
 }
 
 // getTrustyAIImageAndTagFromConfigMap gets a custom TrustyAI image and tag from a ConfigMap in the operator's namespace
