@@ -176,7 +176,7 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if err != nil {
 		return RequeueWithError(err)
 	}
-	
+
 	// Fetch the TrustyAIService instance
 	trustyAIServiceService := &trustyaiopendatahubiov1alpha1.TrustyAIService{}
 	err = r.Get(ctx, req.NamespacedName, trustyAIServiceService)
@@ -233,15 +233,21 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	}
 
-	if err = r.updateCondition(ctx, req, instance,
-		trustyAIAvailableConditionType, corev1.ConditionTrue,
-		"TrustyAIServiceReady", "TrustyAI service ready"); err != nil {
+	// Fetch the latest version of the TrustyAIService object
+	latestInstance := &trustyaiopendatahubiov1alpha1.TrustyAIService{}
+	err = r.Get(ctx, req.NamespacedName, latestInstance)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to get latest version of TrustyAIService")
 		return RequeueWithError(err)
 	}
 
-	err = r.reconcileStatuses(instance, ctx)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Could not reconcile statuses.")
+	// Update the instance status to Ready
+	instance.Status.Phase = "Ready"
+	instance.Status.Ready = corev1.ConditionTrue
+
+	if err = r.updateCondition(ctx, req, latestInstance,
+		trustyAIAvailableConditionType, corev1.ConditionTrue,
+		"TrustyAIServiceReady", "TrustyAI service ready"); err != nil {
 		return RequeueWithError(err)
 	}
 
