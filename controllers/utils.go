@@ -5,8 +5,10 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"os"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"time"
 )
 
 func isDeploymentReady(deployment *appsv1.Deployment) bool {
@@ -59,4 +61,20 @@ func (r *TrustyAIServiceReconciler) GetDeploymentsByLabel(ctx context.Context, n
 	}
 
 	return deployments.Items, nil
+}
+
+func DoNotRequeue() (ctrl.Result, error) {
+	return ctrl.Result{}, nil
+}
+
+func RequeueWithError(err error) (ctrl.Result, error) {
+	return ctrl.Result{}, err
+}
+
+func RequeueAfterDuration(duration time.Duration) (ctrl.Result, error) {
+	return ctrl.Result{RequeueAfter: duration}, nil
+}
+
+func RequeueAfterDurationWithError(duration time.Duration, err error) (ctrl.Result, error) {
+	return ctrl.Result{RequeueAfter: duration}, err
 }
