@@ -211,6 +211,7 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	pvcReady, err := r.checkPVCReady(ctx, instance)
 	if err != nil || !pvcReady {
 		// PVC not ready, requeue
+		log.FromContext(ctx).Info("PVC not ready, requeuing")
 		return Requeue()
 	}
 
@@ -218,6 +219,7 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	deploymentReady, err := r.checkDeploymentReady(ctx, instance)
 	if err != nil || !deploymentReady {
 		// Deployment not ready, requeue
+		log.FromContext(ctx).Info("Deployment not ready, requeuing")
 		return Requeue()
 	}
 
@@ -225,6 +227,7 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	routeReady, err := r.checkRouteReady(ctx, instance)
 	if err != nil || !routeReady {
 		// Route not ready, requeue
+		log.FromContext(ctx).Info("Route not ready, requeuing")
 		Requeue()
 	}
 
