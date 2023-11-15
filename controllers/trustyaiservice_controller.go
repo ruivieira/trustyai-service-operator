@@ -206,17 +206,43 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 		return RequeueWithErrorMessage(ctx, err, "Failed to get or create Route")
 	}
-	_, updateErr := r.updateStatus(ctx, instance, func(saved *trustyaiopendatahubiov1alpha1.TrustyAIService) {
-		// Set Route has available
-		UpdateRouteAvailable(saved)
-		// At the end of reconcile, update the instance status to Ready
-		saved.Status.Phase = "Ready"
-		saved.Status.Ready = corev1.ConditionTrue
-	})
-	if updateErr != nil {
-		return RequeueWithErrorMessage(ctx, err, "Failed to update status")
+
+	// Ensure PVC
+	pvcReady, err := r.checkPVCReady(ctx, instance)
+	if err != nil || !pvcReady {
+		// PVC not ready, requeue
+		return Requeue()
 	}
 
+	// Ensure Deployment
+	deploymentReady, err := r.checkDeploymentReady(ctx, instance)
+	if err != nil || !deploymentReady {
+		// Deployment not ready, requeue
+		return Requeue()
+	}
+
+	// Ensure Route
+	routeReady, err := r.checkRouteReady(ctx, instance)
+	if err != nil || !routeReady {
+		// Route not ready, requeue
+		Requeue()
+	}
+
+	// All checks passed, resources are ready
+	if pvcReady && deploymentReady && routeReady {
+		_, updateErr := r.updateStatus(ctx, instance, func(saved *trustyaiopendatahubiov1alpha1.TrustyAIService) {
+			// Set Route has available
+			UpdateRouteAvailable(saved)
+			// At the end of reconcile, update the instance status to Ready
+			UpdateTrustyAIServiceAvailable(saved)
+			saved.Status.Phase = "Ready"
+			saved.Status.Ready = corev1.ConditionTrue
+		})
+		if updateErr != nil {
+			return RequeueWithErrorMessage(ctx, err, "Failed to update status")
+		}
+
+	}
 	// Deployment already exists - requeue the request with a delay
 	return RequeueWithDelay(defaultRequeueDelay)
 }

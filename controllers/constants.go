@@ -20,6 +20,7 @@ const (
 	StatusTypeInferenceServicesPresent = "InferenceServicesPresent"
 	StatusTypePVCAvailable             = "PVCAvailable"
 	StatusTypeRouteAvailable           = "RouteAvailable"
+	StatusTypeAvailable                = "Available"
 )
 
 // Status reasons
@@ -30,6 +31,7 @@ const (
 	StatusReasonPVCFound                  = "PVCFound"
 	StatusReasonRouteNotFound             = "RouteNotFound"
 	StatusReasonRouteFound                = "RouteFound"
+	StatusAvailable                       = "AllComponentsReady"
 )
 
 // Event reasons
