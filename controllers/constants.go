@@ -32,6 +32,7 @@ const (
 	StatusReasonRouteNotFound             = "RouteNotFound"
 	StatusReasonRouteFound                = "RouteFound"
 	StatusAvailable                       = "AllComponentsReady"
+	StatusNotAvailable                    = "NotAllComponentsReady"
 )
 
 // Event reasons

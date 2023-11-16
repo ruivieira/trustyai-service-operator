@@ -61,3 +61,7 @@ func UpdateRouteNotAvailable(saved *trustyaiopendatahubiov1alpha1.TrustyAIServic
 func UpdateTrustyAIServiceAvailable(saved *trustyaiopendatahubiov1alpha1.TrustyAIService) {
 	saved.SetStatus(StatusTypeAvailable, StatusAvailable, StatusAvailable, v1.ConditionTrue)
 }
+
+func UpdateTrustyAIServiceNotAvailable(saved *trustyaiopendatahubiov1alpha1.TrustyAIService) {
+	saved.SetStatus(StatusTypeAvailable, StatusNotAvailable, "Not all components available", v1.ConditionFalse)
+}

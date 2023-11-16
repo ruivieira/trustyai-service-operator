@@ -244,7 +244,16 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		if updateErr != nil {
 			return RequeueWithErrorMessage(ctx, err, "Failed to update status")
 		}
-
+	} else {
+		_, updateErr := r.updateStatus(ctx, instance, func(saved *trustyaiopendatahubiov1alpha1.TrustyAIService) {
+			UpdateRouteAvailable(saved)
+			UpdateTrustyAIServiceNotAvailable(saved)
+			saved.Status.Phase = "Ready"
+			saved.Status.Ready = corev1.ConditionFalse
+		})
+		if updateErr != nil {
+			return RequeueWithErrorMessage(ctx, err, "Failed to update status")
+		}
 	}
 	// Deployment already exists - requeue the request with a delay
 	return RequeueWithDelay(defaultRequeueDelay)
