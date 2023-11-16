@@ -205,24 +205,11 @@ func (r *TrustyAIServiceReconciler) patchKServe(ctx context.Context, instance *t
 	return nil
 }
 
-func (r *TrustyAIServiceReconciler) checkAllInferenceServicesReady(ctx context.Context, namespace string) (bool, error) {
+func (r *TrustyAIServiceReconciler) checkInferenceServicesPresent(ctx context.Context, namespace string) (bool, error) {
 	infServiceList := &kservev1beta1.InferenceServiceList{}
 	if err := r.List(ctx, infServiceList, client.InNamespace(namespace)); err != nil {
 		return false, err
 	}
 
-	for _, infService := range infServiceList.Items {
-		allReady := true
-		for _, condition := range infService.Status.Conditions {
-			if condition.Type == kservev1beta1.PredictorReady && condition.Status != corev1.ConditionTrue {
-				allReady = false
-				break
-			}
-		}
-		if !allReady {
-			return false, nil
-		}
-	}
-
-	return true, nil
+	return len(infServiceList.Items) > 0, nil
 }

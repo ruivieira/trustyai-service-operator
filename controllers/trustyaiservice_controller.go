@@ -226,7 +226,7 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return Requeue()
 	}
 
-	inferenceServiceReady, err := r.checkAllInferenceServicesReady(ctx, instance.Namespace)
+	inferenceServiceReady, err := r.checkInferenceServicesPresent(ctx, instance.Namespace)
 
 	// All checks passed, resources are ready
 	if pvcReady && deploymentReady && routeReady {
