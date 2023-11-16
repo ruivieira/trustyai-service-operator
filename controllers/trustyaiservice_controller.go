@@ -149,11 +149,6 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		// If there was an error finding the PV, requeue the request
 		return RequeueWithErrorMessage(ctx, err, "Could not find requested PersistentVolumeClaim.")
 
-	} else {
-		_, updateErr := r.updateStatus(ctx, instance, UpdatePVCAvailable)
-		if updateErr != nil {
-			return RequeueWithErrorMessage(ctx, err, "Failed to update status")
-		}
 	}
 
 	// Ensure Deployment object
@@ -231,12 +226,20 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		Requeue()
 	}
 
+	inferenceServiceReady, err := r.checkAllInferenceServicesReady(ctx, instance.Namespace)
+
 	// All checks passed, resources are ready
 	if pvcReady && deploymentReady && routeReady {
 		_, updateErr := r.updateStatus(ctx, instance, func(saved *trustyaiopendatahubiov1alpha1.TrustyAIService) {
-			// Set Route has available
+
+			if inferenceServiceReady {
+				UpdateInferenceServicePresent(saved)
+			} else {
+				UpdateInferenceServiceNotPresent(saved)
+			}
+
+			UpdatePVCAvailable(saved)
 			UpdateRouteAvailable(saved)
-			// At the end of reconcile, update the instance status to Ready
 			UpdateTrustyAIServiceAvailable(saved)
 			saved.Status.Phase = "Ready"
 			saved.Status.Ready = corev1.ConditionTrue
@@ -246,7 +249,23 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	} else {
 		_, updateErr := r.updateStatus(ctx, instance, func(saved *trustyaiopendatahubiov1alpha1.TrustyAIService) {
-			UpdateRouteAvailable(saved)
+
+			if inferenceServiceReady {
+				UpdateInferenceServicePresent(saved)
+			} else {
+				UpdateInferenceServiceNotPresent(saved)
+			}
+
+			if pvcReady {
+				UpdatePVCAvailable(saved)
+			} else {
+				UpdatePVCNotAvailable(saved)
+			}
+			if routeReady {
+				UpdateRouteAvailable(saved)
+			} else {
+				UpdateRouteNotAvailable(saved)
+			}
 			UpdateTrustyAIServiceNotAvailable(saved)
 			saved.Status.Phase = "Ready"
 			saved.Status.Ready = corev1.ConditionFalse

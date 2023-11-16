@@ -138,11 +138,6 @@ func (r *TrustyAIServiceReconciler) handleInferenceServices(ctx context.Context,
 	}
 
 	if len(inferenceServices.Items) == 0 {
-		_, updateErr := r.updateStatus(ctx, instance, UpdateInferenceServiceNotPresent)
-		if updateErr != nil {
-			log.FromContext(ctx).Error(updateErr, "Could not update status for InferenceService not present")
-			return false, updateErr
-		}
 		return true, nil
 	}
 
@@ -162,13 +157,6 @@ func (r *TrustyAIServiceReconciler) handleInferenceServices(ctx context.Context,
 				return false, err
 			}
 		}
-	}
-
-	instance.SetStatus("InferenceServicesPresent", "InferenceServicesFound", "InferenceServices found", corev1.ConditionTrue)
-	_, updateErr := r.updateStatus(ctx, instance, UpdateInferenceServicePresent)
-	if updateErr != nil {
-		log.FromContext(ctx).Error(updateErr, "Could not update status for InferenceService present")
-		return false, updateErr
 	}
 	return true, nil
 }
@@ -215,4 +203,26 @@ func (r *TrustyAIServiceReconciler) patchKServe(ctx context.Context, instance *t
 		return fmt.Errorf("failed to update InferenceService %s/%s: %v", infService.Namespace, infService.Name, err)
 	}
 	return nil
+}
+
+func (r *TrustyAIServiceReconciler) checkAllInferenceServicesReady(ctx context.Context, namespace string) (bool, error) {
+	infServiceList := &kservev1beta1.InferenceServiceList{}
+	if err := r.List(ctx, infServiceList, client.InNamespace(namespace)); err != nil {
+		return false, err
+	}
+
+	for _, infService := range infServiceList.Items {
+		allReady := true
+		for _, condition := range infService.Status.Conditions {
+			if condition.Type == kservev1beta1.PredictorReady && condition.Status != corev1.ConditionTrue {
+				allReady = false
+				break
+			}
+		}
+		if !allReady {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
