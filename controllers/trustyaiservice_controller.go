@@ -223,24 +223,28 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if err != nil || !routeReady {
 		// Route not ready, requeue
 		log.FromContext(ctx).Info("Route not ready, requeuing")
-		Requeue()
+		return Requeue()
 	}
 
 	inferenceServiceReady, err := r.checkAllInferenceServicesReady(ctx, instance.Namespace)
 
 	// All checks passed, resources are ready
 	if pvcReady && deploymentReady && routeReady {
+		log.FromContext(ctx).Info("All resources ready")
 		_, updateErr := r.updateStatus(ctx, instance, func(saved *trustyaiopendatahubiov1alpha1.TrustyAIService) {
 
 			if inferenceServiceReady {
+				log.FromContext(ctx).Info("Inference service ready")
 				UpdateInferenceServicePresent(saved)
 			} else {
+				log.FromContext(ctx).Info("Inference service not ready")
 				UpdateInferenceServiceNotPresent(saved)
 			}
 
 			UpdatePVCAvailable(saved)
 			UpdateRouteAvailable(saved)
 			UpdateTrustyAIServiceAvailable(saved)
+			log.FromContext(ctx).Info("TrustyAI service ready")
 			saved.Status.Phase = "Ready"
 			saved.Status.Ready = corev1.ConditionTrue
 		})
@@ -251,21 +255,28 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		_, updateErr := r.updateStatus(ctx, instance, func(saved *trustyaiopendatahubiov1alpha1.TrustyAIService) {
 
 			if inferenceServiceReady {
+				log.FromContext(ctx).Info("Inference service ready")
 				UpdateInferenceServicePresent(saved)
 			} else {
+				log.FromContext(ctx).Info("Inference service not ready")
 				UpdateInferenceServiceNotPresent(saved)
 			}
 
 			if pvcReady {
+				log.FromContext(ctx).Info("PVC ready")
 				UpdatePVCAvailable(saved)
 			} else {
+				log.FromContext(ctx).Info("PVC not ready")
 				UpdatePVCNotAvailable(saved)
 			}
 			if routeReady {
+				log.FromContext(ctx).Info("Route ready")
 				UpdateRouteAvailable(saved)
 			} else {
+				log.FromContext(ctx).Info("Route not ready")
 				UpdateRouteNotAvailable(saved)
 			}
+			log.FromContext(ctx).Info("TrustyAI service not ready")
 			UpdateTrustyAIServiceNotAvailable(saved)
 			saved.Status.Phase = "Ready"
 			saved.Status.Ready = corev1.ConditionFalse
@@ -275,6 +286,7 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	}
 	// Deployment already exists - requeue the request with a delay
+	log.FromContext(ctx).Info("requeuing")
 	return RequeueWithDelay(defaultRequeueDelay)
 }
 
