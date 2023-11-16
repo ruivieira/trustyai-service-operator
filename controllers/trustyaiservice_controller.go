@@ -202,91 +202,14 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return RequeueWithErrorMessage(ctx, err, "Failed to get or create Route")
 	}
 
-	// Ensure PVC
-	pvcReady, err := r.checkPVCReady(ctx, instance)
-	if err != nil || !pvcReady {
-		// PVC not ready, requeue
-		log.FromContext(ctx).Info("PVC not ready, requeuing")
-		return Requeue()
+	// Reconcile statuses
+	result, err := r.reconcileStatuses(ctx, instance)
+	if err != nil {
+		return result, err
 	}
 
-	// Ensure Deployment
-	deploymentReady, err := r.checkDeploymentReady(ctx, instance)
-	if err != nil || !deploymentReady {
-		// Deployment not ready, requeue
-		log.FromContext(ctx).Info("Deployment not ready, requeuing")
-		return Requeue()
-	}
-
-	// Ensure Route
-	routeReady, err := r.checkRouteReady(ctx, instance)
-	if err != nil || !routeReady {
-		// Route not ready, requeue
-		log.FromContext(ctx).Info("Route not ready, requeuing")
-		return Requeue()
-	}
-
-	inferenceServiceReady, err := r.checkInferenceServicesPresent(ctx, instance.Namespace)
-
-	// All checks passed, resources are ready
-	if pvcReady && deploymentReady && routeReady {
-		log.FromContext(ctx).Info("All resources ready")
-		_, updateErr := r.updateStatus(ctx, instance, func(saved *trustyaiopendatahubiov1alpha1.TrustyAIService) {
-
-			if inferenceServiceReady {
-				log.FromContext(ctx).Info("Inference service ready")
-				UpdateInferenceServicePresent(saved)
-			} else {
-				log.FromContext(ctx).Info("Inference service not ready")
-				UpdateInferenceServiceNotPresent(saved)
-			}
-
-			UpdatePVCAvailable(saved)
-			UpdateRouteAvailable(saved)
-			UpdateTrustyAIServiceAvailable(saved)
-			log.FromContext(ctx).Info("TrustyAI service ready")
-			saved.Status.Phase = "Ready"
-			saved.Status.Ready = corev1.ConditionTrue
-		})
-		if updateErr != nil {
-			return RequeueWithErrorMessage(ctx, err, "Failed to update status")
-		}
-	} else {
-		_, updateErr := r.updateStatus(ctx, instance, func(saved *trustyaiopendatahubiov1alpha1.TrustyAIService) {
-
-			if inferenceServiceReady {
-				log.FromContext(ctx).Info("Inference service ready")
-				UpdateInferenceServicePresent(saved)
-			} else {
-				log.FromContext(ctx).Info("Inference service not ready")
-				UpdateInferenceServiceNotPresent(saved)
-			}
-
-			if pvcReady {
-				log.FromContext(ctx).Info("PVC ready")
-				UpdatePVCAvailable(saved)
-			} else {
-				log.FromContext(ctx).Info("PVC not ready")
-				UpdatePVCNotAvailable(saved)
-			}
-			if routeReady {
-				log.FromContext(ctx).Info("Route ready")
-				UpdateRouteAvailable(saved)
-			} else {
-				log.FromContext(ctx).Info("Route not ready")
-				UpdateRouteNotAvailable(saved)
-			}
-			log.FromContext(ctx).Info("TrustyAI service not ready")
-			UpdateTrustyAIServiceNotAvailable(saved)
-			saved.Status.Phase = "Ready"
-			saved.Status.Ready = corev1.ConditionFalse
-		})
-		if updateErr != nil {
-			return RequeueWithErrorMessage(ctx, err, "Failed to update status")
-		}
-	}
-	// Deployment already exists - requeue the request with a delay
-	log.FromContext(ctx).Info("requeuing")
+	// Requeue the request with a delay
+	log.FromContext(ctx).Info("Requeuing")
 	return RequeueWithDelay(defaultRequeueDelay)
 }
 

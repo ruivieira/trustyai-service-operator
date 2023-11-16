@@ -5,9 +5,23 @@ import (
 	trustyaiopendatahubiov1alpha1 "github.com/trustyai-explainability/trustyai-service-operator/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/util/retry"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+// IsAllReady checks if all the necessary readiness fields are true.
+func (rs *AvailabilityStatus) IsAllReady() bool {
+	return rs.PVCReady && rs.DeploymentReady && rs.RouteReady
+}
+
+// AvailabilityStatus holds the readiness status of various resources.
+type AvailabilityStatus struct {
+	PVCReady              bool
+	DeploymentReady       bool
+	RouteReady            bool
+	InferenceServiceReady bool
+}
 
 func (r *TrustyAIServiceReconciler) updateStatus(ctx context.Context, original *trustyaiopendatahubiov1alpha1.TrustyAIService, update func(saved *trustyaiopendatahubiov1alpha1.TrustyAIService),
 ) (*trustyaiopendatahubiov1alpha1.TrustyAIService, error) {
@@ -17,7 +31,7 @@ func (r *TrustyAIServiceReconciler) updateStatus(ctx context.Context, original *
 		if err != nil {
 			return err
 		}
-		// update status here
+		// Update status here
 		update(saved)
 
 		// Try to update
@@ -28,6 +42,99 @@ func (r *TrustyAIServiceReconciler) updateStatus(ctx context.Context, original *
 		log.FromContext(ctx).Error(err, "Failed to update TrustyAIService status")
 	}
 	return saved, err
+}
+
+// reconcileStatuses checks the readiness status of PVC, Deployment, Route and Inference Services
+func (r *TrustyAIServiceReconciler) reconcileStatuses(ctx context.Context, instance *trustyaiopendatahubiov1alpha1.TrustyAIService) (ctrl.Result, error) {
+	var err error
+	status := AvailabilityStatus{}
+
+	// Check for PVC readiness
+	status.PVCReady, err = r.checkPVCReady(ctx, instance)
+	if err != nil || !status.PVCReady {
+		// PVC not ready, requeue
+		log.FromContext(ctx).Info("PVC not ready, requeuing")
+		return Requeue()
+	}
+
+	// Check for deployment readiness
+	status.DeploymentReady, err = r.checkDeploymentReady(ctx, instance)
+	if err != nil || !status.DeploymentReady {
+		// Deployment not ready, requeue
+		log.FromContext(ctx).Info("Deployment not ready, requeuing")
+		return Requeue()
+	}
+
+	// Check for route readiness
+	status.RouteReady, err = r.checkRouteReady(ctx, instance)
+	if err != nil || !status.RouteReady {
+		// Route not ready, requeue
+		log.FromContext(ctx).Info("Route not ready, requeuing")
+		return Requeue()
+	}
+
+	// Check if InferenceServices present
+	status.InferenceServiceReady, err = r.checkInferenceServicesPresent(ctx, instance.Namespace)
+
+	// All checks passed, resources are ready
+	if status.IsAllReady() {
+		log.FromContext(ctx).Info("All resources ready")
+		_, updateErr := r.updateStatus(ctx, instance, func(saved *trustyaiopendatahubiov1alpha1.TrustyAIService) {
+
+			if status.InferenceServiceReady {
+				log.FromContext(ctx).Info("Inference service ready")
+				UpdateInferenceServicePresent(saved)
+			} else {
+				log.FromContext(ctx).Info("Inference service not ready")
+				UpdateInferenceServiceNotPresent(saved)
+			}
+
+			UpdatePVCAvailable(saved)
+			UpdateRouteAvailable(saved)
+			UpdateTrustyAIServiceAvailable(saved)
+			log.FromContext(ctx).Info("TrustyAI service ready")
+			saved.Status.Phase = "Ready"
+			saved.Status.Ready = v1.ConditionTrue
+		})
+		if updateErr != nil {
+			return RequeueWithErrorMessage(ctx, err, "Failed to update status")
+		}
+	} else {
+		_, updateErr := r.updateStatus(ctx, instance, func(saved *trustyaiopendatahubiov1alpha1.TrustyAIService) {
+
+			if status.InferenceServiceReady {
+				log.FromContext(ctx).Info("Inference service ready")
+				UpdateInferenceServicePresent(saved)
+			} else {
+				log.FromContext(ctx).Info("Inference service not ready")
+				UpdateInferenceServiceNotPresent(saved)
+			}
+
+			if status.PVCReady {
+				log.FromContext(ctx).Info("PVC ready")
+				UpdatePVCAvailable(saved)
+			} else {
+				log.FromContext(ctx).Info("PVC not ready")
+				UpdatePVCNotAvailable(saved)
+			}
+			if status.RouteReady {
+				log.FromContext(ctx).Info("Route ready")
+				UpdateRouteAvailable(saved)
+			} else {
+				log.FromContext(ctx).Info("Route not ready")
+				UpdateRouteNotAvailable(saved)
+			}
+			log.FromContext(ctx).Info("TrustyAI service not ready")
+			UpdateTrustyAIServiceNotAvailable(saved)
+			saved.Status.Phase = "Ready"
+			saved.Status.Ready = v1.ConditionFalse
+		})
+		if updateErr != nil {
+			return RequeueWithErrorMessage(ctx, err, "Failed to update status")
+		}
+	}
+	// All resources are reconciled, return no error and do not requeue
+	return ctrl.Result{}, nil
 }
 
 func UpdateInferenceServiceNotPresent(saved *trustyaiopendatahubiov1alpha1.TrustyAIService) {
