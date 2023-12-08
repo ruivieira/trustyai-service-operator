@@ -86,7 +86,7 @@ var _ = Describe("TrustyAI operator", func() {
 
 			Expect(len(deployment.Spec.Template.Spec.Containers)).Should(Equal(2))
 			Expect(deployment.Spec.Template.Spec.Containers[0].Image).Should(Equal("quay.io/trustyai/trustyai-service:latest"))
-			Expect(deployment.Spec.Template.Spec.Containers[1].Image).Should(Equal("registry.redhat.io/openshift4/ose-oauth-proxy:latest"))
+			Expect(deployment.Spec.Template.Spec.Containers[1].Image).Should(Equal("quay.io/openshift/origin-oauth-proxy:latest"))
 
 			WaitFor(func() error {
 				service, _ := reconciler.reconcileService(instance)
@@ -396,7 +396,7 @@ var _ = Describe("TrustyAI operator", func() {
 
 				Expect(len(deployment.Spec.Template.Spec.Containers)).Should(Equal(2))
 				Expect(deployment.Spec.Template.Spec.Containers[0].Image).Should(Equal("quay.io/trustyai/trustyai-service:latest"))
-				Expect(deployment.Spec.Template.Spec.Containers[1].Image).Should(Equal("registry.redhat.io/openshift4/ose-oauth-proxy:latest"))
+				Expect(deployment.Spec.Template.Spec.Containers[1].Image).Should(Equal("quay.io/openshift/origin-oauth-proxy:latest"))
 
 			}
 		})

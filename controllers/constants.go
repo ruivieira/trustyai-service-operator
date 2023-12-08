@@ -27,7 +27,7 @@ const (
 	OAuthServicePort       = 443
 	OAuthName              = "oauth-proxy"
 	OAuthServicePortName   = "oauth-proxy"
-	defaultOAuthProxyImage = "registry.redhat.io/openshift4/ose-oauth-proxy:latest"
+	defaultOAuthProxyImage = "quay.io/openshift/origin-oauth-proxy:latest"
 )
 
 // Status types
