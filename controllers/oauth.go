@@ -42,7 +42,7 @@ func generateOAuthProxyContainer(instance *trustyaiopendatahubiov1alpha1.TrustyA
 			"--tls-cert=/etc/tls/private/tls.crt",
 			"--tls-key=/etc/tls/private/tls.key",
 			"--upstream=http://localhost:8080",
-			"--skip-auth-regex='(^/metrics|^/apis/v1beta1/healthz)'",
+			"--skip-auth-regex='(^/apis/v1beta1/healthz)'",
 			fmt.Sprintf("--openshift-sar={\"namespace\":\"%s\",\"resource\":\"pods\",\"verb\":\"get\"}", instance.Namespace),
 			fmt.Sprintf("--openshift-delegate-urls={\"/\": {\"namespace\": \"%s\", \"resource\": \"pods\", \"verb\": \"get\"}}", instance.Namespace),
 		},
