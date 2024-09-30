@@ -42,6 +42,7 @@ spec:
       containers:
         - name: trustyai-service
           image: {{ .ServiceImage }}
+          imagePullPolicy: Always
           livenessProbe:
             httpGet:
               path: /q/health/live
