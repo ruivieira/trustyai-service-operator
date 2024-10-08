@@ -124,7 +124,7 @@ spec:
             {{ end }}
             {{ if .CertName }}
             - name: KSERVE_LOGGER_CA_CERT
-              value: {{ .CertName }}
+              value: /etc/tls/kserve/{{ .CertName }}
             {{ end }}
           volumeMounts:
             - name: {{ .Instance.Name }}-internal
