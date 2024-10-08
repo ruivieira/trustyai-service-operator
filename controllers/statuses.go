@@ -61,7 +61,18 @@ func (r *TrustyAIServiceReconciler) reconcileStatuses(ctx context.Context, insta
 	status.DeploymentReady, err = r.checkDeploymentReady(ctx, instance)
 
 	if instance.Spec.Storage.IsStorageDatabase() || instance.IsMigration() {
-		status.DBReady, _ = r.checkDatabaseAccessible(ctx, instance)
+		dbStatus, _ := r.checkDatabaseAccessible(ctx, instance)
+		switch dbStatus {
+		case StatusDBConnecting:
+			UpdateDBConnecting(instance)
+			status.DBReady = false
+		case StatusDBConnectionError:
+			UpdateDBConnectionError(instance)
+			status.DBReady = false
+		default:
+			status.DBReady = true
+			UpdateDBAvailable(instance)
+		}
 	}
 
 	// Check for route readiness
@@ -199,4 +210,10 @@ func UpdateDBConnectionError(saved *trustyaiopendatahubiov1alpha1.TrustyAIServic
 
 func UpdateDBAvailable(saved *trustyaiopendatahubiov1alpha1.TrustyAIService) {
 	saved.SetStatus(StatusTypeDBAvailable, StatusDBAvailable, "Database available", v1.ConditionTrue)
+}
+
+func UpdateDBConnecting(saved *trustyaiopendatahubiov1alpha1.TrustyAIService) {
+	saved.SetStatus(StatusTypeDBAvailable, StatusDBConnecting, "Connecting to the database", v1.ConditionFalse)
+	saved.Status.Phase = PhaseNotReady
+	saved.Status.Ready = v1.ConditionFalse
 }

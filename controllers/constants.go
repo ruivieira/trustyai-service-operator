@@ -62,6 +62,7 @@ const (
 	StatusDBCredentialsNotFound           = "DBCredentialsNotFound"
 	StatusDBCredentialsError              = "DBCredentialsError"
 	StatusDBConnectionError               = "DBConnectionError"
+	StatusDBConnecting                    = "DBConnecting"
 	StatusDBAvailable                     = "DBAvailable"
 )
 

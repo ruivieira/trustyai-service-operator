@@ -12,14 +12,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (r *TrustyAIServiceReconciler) checkDatabaseAccessible(ctx context.Context, instance *trustyaiopendatahubiov1alpha1.TrustyAIService) (bool, error) {
+func (r *TrustyAIServiceReconciler) checkDatabaseAccessible(ctx context.Context, instance *trustyaiopendatahubiov1alpha1.TrustyAIService) (string, error) {
 	deployment := &appsv1.Deployment{}
 	err := r.Get(ctx, types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, deployment)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			return false, nil
+			return StatusDBConnecting, nil
 		}
-		return false, err
+		return StatusDBConnectionError, err
 	}
 
 	for _, cond := range deployment.Status.Conditions {
@@ -30,27 +30,28 @@ func (r *TrustyAIServiceReconciler) checkDatabaseAccessible(ctx context.Context,
 				client.MatchingLabels(deployment.Spec.Selector.MatchLabels),
 			}
 			if err := r.List(ctx, podList, listOpts...); err != nil {
-				return false, err
+				return StatusDBConnectionError, err
 			}
 
 			for _, pod := range podList.Items {
 				for _, cs := range pod.Status.ContainerStatuses {
 					if cs.Name == "trustyai-service" {
 						if cs.State.Running != nil {
-							return true, nil
+							// Return DBConnecting while the container is running but no confirmation of a DB connection yet
+							return StatusDBConnecting, nil
 						}
 
 						if cs.LastTerminationState.Terminated != nil {
 							termination := cs.LastTerminationState.Terminated
 							if termination.Reason == "Error" && termination.Message != "" {
-								if strings.Contains(termination.Message, "Socket fail to connect to host:address") {
-									return false, nil
+								if strings.Contains(termination.Message, "Socket fail to connect to host:address") || strings.Contains(termination.Message, "Connection refused") {
+									return StatusDBConnectionError, nil
 								}
 							}
 						}
 
 						if cs.State.Waiting != nil && cs.State.Waiting.Reason == StateReasonCrashLoopBackOff {
-							return false, nil
+							return StatusDBConnectionError, nil
 						}
 					}
 				}
@@ -58,5 +59,5 @@ func (r *TrustyAIServiceReconciler) checkDatabaseAccessible(ctx context.Context,
 		}
 	}
 
-	return false, nil
+	return StatusDBConnecting, nil
 }
