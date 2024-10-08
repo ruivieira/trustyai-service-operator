@@ -37,17 +37,16 @@ func (r *TrustyAIServiceReconciler) checkDatabaseAccessible(ctx context.Context,
 				for _, cs := range pod.Status.ContainerStatuses {
 					if cs.Name == "trustyai-service" {
 						if cs.State.Running != nil {
-							// Return DBConnecting while the container is running but no confirmation of a DB connection yet
-							return StatusDBConnecting, nil
-						}
-
-						if cs.LastTerminationState.Terminated != nil {
-							termination := cs.LastTerminationState.Terminated
-							if termination.Reason == "Error" && termination.Message != "" {
-								if strings.Contains(termination.Message, "Socket fail to connect to host:address") || strings.Contains(termination.Message, "Connection refused") {
-									return StatusDBConnectionError, nil
+							if cs.LastTerminationState.Terminated != nil {
+								termination := cs.LastTerminationState.Terminated
+								if termination.Reason == "Error" && termination.Message != "" {
+									if strings.Contains(termination.Message, "Socket fail to connect to host:address") || strings.Contains(termination.Message, "Connection refused") {
+										return StatusDBConnectionError, nil
+									}
 								}
 							}
+
+							return StatusDBAvailable, nil
 						}
 
 						if cs.State.Waiting != nil && cs.State.Waiting.Reason == StateReasonCrashLoopBackOff {
