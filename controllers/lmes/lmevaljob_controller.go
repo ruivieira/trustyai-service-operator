@@ -195,6 +195,18 @@ func (r *LMEvalJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
+	// If outputs have been explicitly set
+	if job.Spec.Outputs != nil {
+		// If managed PVC is set
+		if job.Spec.Outputs.ManagedPVC != nil {
+			return r.handleManagedPVC(ctx, log, job)
+		} else if job.Spec.Outputs.PersistentVolumeClaim != nil {
+			return r.handleCustomPVC(ctx, log, job)
+		} else if job.Spec.Outputs.PersistentVolumeClaimName != nil {
+			return r.handleCustomPVC(ctx, log, job)
+		}
+	}
+
 	return ctrl.Result{}, nil
 }
 
