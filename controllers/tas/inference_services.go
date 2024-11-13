@@ -234,10 +234,7 @@ func (r *TrustyAIServiceReconciler) handleInferenceServices(ctx context.Context,
 
 		// Check the annotation "serving.kserve.io/deploymentMode"
 		if val, ok := annotations["serving.kserve.io/deploymentMode"]; ok {
-			if val == DEPLOYMENT_MODE_RAW {
-				log.FromContext(ctx).Info("RawDeployment mode not supported by TrustyAI")
-				continue
-			} else if val == DEPLOYMENT_MODE_MODELMESH {
+			if val == DEPLOYMENT_MODE_MODELMESH {
 				shouldContinue, err := r.patchEnvVarsByLabelForDeployments(ctx, instance, namespace, labelKey, labelValue, envVarName, crName, remove)
 				if err != nil {
 					log.FromContext(ctx).Error(err, "could not patch environment variables for ModelMesh deployments")
