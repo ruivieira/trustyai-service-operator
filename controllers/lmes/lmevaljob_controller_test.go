@@ -2433,6 +2433,14 @@ func Test_AllowCodeOnlineMode(t *testing.T) {
 					},
 					Env: []corev1.EnvVar{
 						{
+							Name:  "HF_HUB_DISABLE_TELEMETRY",
+							Value: "1",
+						},
+						{
+							Name:  "DO_NOT_TRACK",
+							Value: "1",
+						},
+						{
 							Name:  "TRUST_REMOTE_CODE",
 							Value: "1",
 						},
@@ -2443,14 +2451,6 @@ func Test_AllowCodeOnlineMode(t *testing.T) {
 						{
 							Name:  "UNITXT_ALLOW_UNVERIFIED_CODE",
 							Value: "True",
-						},
-						{
-							Name:  "HF_HUB_DISABLE_TELEMETRY",
-							Value: "1",
-						},
-						{
-							Name:  "DO_NOT_TRACK",
-							Value: "1",
 						},
 					},
 					VolumeMounts: []corev1.VolumeMount{
@@ -2597,6 +2597,14 @@ func Test_AllowCodeOfflineMode(t *testing.T) {
 					},
 					Env: []corev1.EnvVar{
 						{
+							Name:  "HF_HUB_DISABLE_TELEMETRY",
+							Value: "1",
+						},
+						{
+							Name:  "DO_NOT_TRACK",
+							Value: "1",
+						},
+						{
 							Name:  "TRUST_REMOTE_CODE",
 							Value: "1",
 						},
@@ -2607,14 +2615,6 @@ func Test_AllowCodeOfflineMode(t *testing.T) {
 						{
 							Name:  "UNITXT_ALLOW_UNVERIFIED_CODE",
 							Value: "True",
-						},
-						{
-							Name:  "HF_HUB_DISABLE_TELEMETRY",
-							Value: "1",
-						},
-						{
-							Name:  "DO_NOT_TRACK",
-							Value: "1",
 						},
 						{
 							Name:  "HF_DATASETS_OFFLINE",
