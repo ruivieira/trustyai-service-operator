@@ -21,7 +21,6 @@ import (
 	goerrors "errors"
 	"time"
 
-	kservev1alpha1 "github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
 	kservev1beta1 "github.com/kserve/kserve/pkg/apis/serving/v1beta1"
 	trustyaiopendatahubiov1alpha1 "github.com/trustyai-explainability/trustyai-service-operator/api/tas/v1alpha1"
 	"github.com/trustyai-explainability/trustyai-service-operator/controllers/utils"
@@ -33,7 +32,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
@@ -301,7 +299,5 @@ func (r *TrustyAIServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&trustyaiopendatahubiov1alpha1.TrustyAIService{}).
 		Owns(&appsv1.Deployment{}).
-		Watches(&kservev1beta1.InferenceService{}, &handler.EnqueueRequestForObject{}).
-		Watches(&kservev1alpha1.ServingRuntime{}, &handler.EnqueueRequestForObject{}).
 		Complete(r)
 }
