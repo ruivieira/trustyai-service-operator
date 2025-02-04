@@ -19,6 +19,7 @@ package tas
 import (
 	"context"
 	goerrors "errors"
+	"fmt"
 	"time"
 
 	kservev1alpha1 "github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
@@ -30,6 +31,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -279,6 +282,28 @@ func (r *TrustyAIServiceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return RequeueWithDelay(defaultRequeueDelay)
 }
 
+func crdExists(config *rest.Config, groupVersion, resource string) bool {
+	dc, err := discovery.NewDiscoveryClientForConfig(config)
+	if err != nil {
+		ctrl.Log.Error(err, "Error creating discovery client")
+		return false
+	}
+
+	apiResourceList, err := dc.ServerResourcesForGroupVersion(groupVersion)
+	if err != nil {
+		ctrl.Log.Error(err, fmt.Sprintf("Error fetching resources for groupVersion: %s", groupVersion))
+		return false
+	}
+
+	for _, apiResource := range apiResourceList.APIResources {
+		if apiResource.Name == resource {
+			return true
+		}
+	}
+
+	return false
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *TrustyAIServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Watch ServingRuntime objects (not managed by this controller)
@@ -298,10 +323,21 @@ func (r *TrustyAIServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
-	return ctrl.NewControllerManagedBy(mgr).
+	builder := ctrl.NewControllerManagedBy(mgr).
 		For(&trustyaiopendatahubiov1alpha1.TrustyAIService{}).
-		Owns(&appsv1.Deployment{}).
-		Watches(&kservev1beta1.InferenceService{}, &handler.EnqueueRequestForObject{}).
-		Watches(&kservev1alpha1.ServingRuntime{}, &handler.EnqueueRequestForObject{}).
-		Complete(r)
+		Owns(&appsv1.Deployment{})
+
+	if crdExists(mgr.GetConfig(), "serving.kubeflow.org/v1beta1", "inferenceservices") {
+		builder = builder.Watches(&kservev1beta1.InferenceService{}, &handler.EnqueueRequestForObject{})
+	} else {
+		ctrl.Log.WithName("setup").Info("Skipping watch for InferenceService CRD as it is not present")
+	}
+
+	if crdExists(mgr.GetConfig(), "serving.kubeflow.org/v1alpha1", "servingruntimes") {
+		builder = builder.Watches(&kservev1alpha1.ServingRuntime{}, &handler.EnqueueRequestForObject{})
+	} else {
+		ctrl.Log.WithName("setup").Info("Skipping watch for ServingRuntime CRD as it is not present")
+	}
+
+	return builder.Complete(r)
 }
