@@ -189,12 +189,12 @@ spec:
               containerPort: 8443
               protocol: TCP
           volumeMounts:
-          {{ if .CustomCertificatesBundle.IsDefined }}
+            {{ if .CustomCertificatesBundle.IsDefined }}
             - name: {{ .CustomCertificatesBundle.VolumeName }}
               readOnly: true
-              mountPath: /etc/ssl/certs/ca-bundle.crt
-              subPath: ca-bundle.crt
-              {{ end }}
+              mountPath: {{ .CustomCertificatesBundle.MountPath }}
+              subPath: {{ .CustomCertificatesBundle.SubPath }}
+            {{ end }}
             - name: {{ .Instance.Name }}-tls
               mountPath: /etc/tls/private
           image: {{ .OAuthImage }}
@@ -204,7 +204,7 @@ spec:
             - '--email-domain=*'
             - '--openshift-service-account={{ .Instance.Name }}-proxy'
             {{ if .CustomCertificatesBundle.IsDefined }}
-            - '--openshift-ca=/etc/ssl/certs/ca-bundle.crt'
+            - '--openshift-ca={{ .CustomCertificatesBundle.MountPath }}'
             {{ end }}
             - '--provider=openshift'
             - '--tls-cert=/etc/tls/private/tls.crt'

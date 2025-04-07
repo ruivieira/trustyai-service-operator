@@ -24,12 +24,6 @@ const (
 	caBundleName           = "odh-trusted-ca-bundle"
 )
 
-type CustomCertificatesBundle struct {
-	IsDefined     bool
-	VolumeName    string
-	ConfigMapName string
-}
-
 type DeploymentConfig struct {
 	Instance                 *trustyaiopendatahubiov1alpha1.TrustyAIService
 	ServiceImage             string

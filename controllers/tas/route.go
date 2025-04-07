@@ -2,14 +2,14 @@ package tas
 
 import (
 	"context"
-	"reflect"
 
 	routev1 "github.com/openshift/api/route/v1"
 	trustyaiopendatahubiov1alpha1 "github.com/trustyai-explainability/trustyai-service-operator/api/tas/v1alpha1"
-	templateParser "github.com/trustyai-explainability/trustyai-service-operator/controllers/tas/templates"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -18,26 +18,34 @@ const (
 	routeTemplatePath = "service/route.tmpl.yaml"
 )
 
-type RouteConfig struct {
-	Name      string
-	Namespace string
-	PortName  string
-}
-
 func (r *TrustyAIServiceReconciler) createRouteObject(ctx context.Context, instance *trustyaiopendatahubiov1alpha1.TrustyAIService) (*routev1.Route, error) {
 
-	config := RouteConfig{
-		Name:      instance.Name,
-		Namespace: instance.Namespace,
-		PortName:  OAuthServicePortName,
+	route := &routev1.Route{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      instance.Name,
+			Namespace: instance.Namespace,
+			Labels: map[string]string{
+				"trustyai-service-name": instance.Name,
+			},
+		},
+		Spec: routev1.RouteSpec{
+			To: routev1.RouteTargetReference{
+				Kind:   "Service",
+				Name:   instance.Name + "-tls",
+				Weight: new(int32),
+			},
+			Port: &routev1.RoutePort{
+				TargetPort: intstr.FromString(OAuthServicePortName),
+			},
+			TLS: &routev1.TLSConfig{
+				Termination:                   routev1.TLSTerminationEdge,
+				InsecureEdgeTerminationPolicy: routev1.InsecureEdgeTerminationPolicyRedirect,
+			},
+		},
 	}
 
-	var route *routev1.Route
-	route, err := templateParser.ParseResource[routev1.Route](routeTemplatePath, config, reflect.TypeOf(&routev1.Route{}))
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Error parsing the route's template")
-		return nil, err
-	}
+	*route.Spec.To.Weight = 100
+
 	if err := ctrl.SetControllerReference(instance, route, r.Scheme); err != nil {
 		return nil, err
 	}
@@ -58,7 +66,6 @@ func (r *TrustyAIServiceReconciler) reconcileRouteAuth(instance *trustyaiopendat
 
 	// Create the route if it does not already exist
 	foundRoute := &routev1.Route{}
-	//justCreated := false
 	err = r.Get(ctx, types.NamespacedName{
 		Name:      desiredRoute.Name,
 		Namespace: instance.Namespace,
@@ -66,27 +73,65 @@ func (r *TrustyAIServiceReconciler) reconcileRouteAuth(instance *trustyaiopendat
 	if err != nil {
 		if errors.IsNotFound(err) {
 			log.FromContext(ctx).Info("Creating Route")
-			// Add .metatada.ownerReferences to the route to be deleted by the
-			// Kubernetes garbage collector if the service is deleted
 			err = ctrl.SetControllerReference(instance, desiredRoute, r.Scheme)
 			if err != nil {
 				log.FromContext(ctx).Error(err, "Unable to add OwnerReference to the Route")
 				return err
 			}
-			// Create the route in the Openshift cluster
 			err = r.Create(ctx, desiredRoute)
 			if err != nil && !errors.IsAlreadyExists(err) {
 				log.FromContext(ctx).Error(err, "Unable to create the Route")
 				return err
 			}
-			//justCreated = true
 		} else {
 			log.FromContext(ctx).Error(err, "Unable to fetch the Route")
 			return err
 		}
+	} else {
+		if updateRoute(foundRoute, desiredRoute) {
+			foundRoute.Spec = desiredRoute.Spec
+			err = r.Update(ctx, foundRoute)
+			if err != nil {
+				log.FromContext(ctx).Error(err, "Unable to update the Route")
+				return err
+			}
+			log.FromContext(ctx).Info("Route updated")
+		}
 	}
 
 	return nil
+}
+
+// updateRoute reconciles route
+func updateRoute(foundRoute, desiredRoute *routev1.Route) bool {
+	if foundRoute.Spec.TLS == nil && desiredRoute.Spec.TLS != nil {
+		return true
+	}
+	if foundRoute.Spec.TLS != nil && desiredRoute.Spec.TLS != nil {
+		if foundRoute.Spec.TLS.DestinationCACertificate != desiredRoute.Spec.TLS.DestinationCACertificate {
+			return true
+		}
+		if foundRoute.Spec.TLS.Termination != desiredRoute.Spec.TLS.Termination {
+			return true
+		}
+		if foundRoute.Spec.TLS.InsecureEdgeTerminationPolicy != desiredRoute.Spec.TLS.InsecureEdgeTerminationPolicy {
+			return true
+		}
+	}
+
+	if foundRoute.Spec.To.Name != desiredRoute.Spec.To.Name {
+		return true
+	}
+
+	if foundRoute.Spec.Port != nil && desiredRoute.Spec.Port != nil {
+		if foundRoute.Spec.Port.TargetPort != desiredRoute.Spec.Port.TargetPort {
+			return true
+		}
+	} else if foundRoute.Spec.Port != nil || desiredRoute.Spec.Port != nil {
+		return true
+	}
+
+	return false
 }
 
 // ReconcileRoute will manage the creation, update and deletion of the

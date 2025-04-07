@@ -180,6 +180,20 @@ rules:
   - update
   - watch
 - apiGroups:
+  - route.openshift.io
+  resources:
+  - routes/custom-host
+  verbs:
+  - create
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - scheduling.k8s.io
   resources:
   - priorityclasses

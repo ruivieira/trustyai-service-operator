@@ -68,6 +68,9 @@ type TrustyAIServiceReconciler struct {
 //+kubebuilder:rbac:groups=core,resources=persistentvolumes,verbs=list;get;watch
 //+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=list;get;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=list;watch;get;create;update;patch;delete
+//+kubebuilder:rbac:groups=route.openshift.io,resources=routes/custom-host,verbs=create
+//+kubebuilder:rbac:groups=route.openshift.io,resources=routes/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=create;list;watch;get;update;patch;delete
 //+kubebuilder:rbac:groups=serving.kserve.io,resources=inferenceservices,verbs=list;watch;get;update;patch
 //+kubebuilder:rbac:groups=serving.kserve.io,resources=inferenceservices/finalizers,verbs=list;watch;get;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch;update
