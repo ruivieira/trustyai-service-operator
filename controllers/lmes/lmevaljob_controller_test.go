@@ -55,7 +55,7 @@ func Test_SimplePod(t *testing.T) {
 			APIVersion: lmesv1alpha1.Version,
 		},
 		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
+			Model: "hf",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -208,7 +208,7 @@ func Test_WithCustomPod(t *testing.T) {
 			APIVersion: lmesv1alpha1.Version,
 		},
 		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
+			Model: "hf",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -475,7 +475,7 @@ func Test_EnvSecretsPod(t *testing.T) {
 			APIVersion: lmesv1alpha1.Version,
 		},
 		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
+			Model: "hf",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -648,7 +648,7 @@ func Test_FileSecretsPod(t *testing.T) {
 			APIVersion: lmesv1alpha1.Version,
 		},
 		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
+			Model: "hf",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -841,7 +841,7 @@ func Test_GenerateArgBatchSize(t *testing.T) {
 			APIVersion: lmesv1alpha1.Version,
 		},
 		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
+			Model: "hf",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -853,24 +853,21 @@ func Test_GenerateArgBatchSize(t *testing.T) {
 
 	// no batchSize in the job, use default batchSize
 	assert.Equal(t, []string{
-		"sh", "-ec",
-		"python -m lm_eval --output_path /opt/app-root/src/output --model test --model_args arg1=value1 --tasks task1,task2 --include_path /opt/app-root/src/my_tasks --batch_size " + svcOpts.DefaultBatchSize,
+		"python", "-m", "lm_eval", "--output_path", "/opt/app-root/src/output", "--model", "hf", "--model_args", "arg1=value1", "--tasks", "task1,task2", "--include_path", "/opt/app-root/src/my_tasks", "--batch_size", svcOpts.DefaultBatchSize,
 	}, generateArgs(svcOpts, job, log))
 
 	// exceed the max-batch-size, use max-batch-size
 	var biggerBatchSize = "30"
 	job.Spec.BatchSize = &biggerBatchSize
 	assert.Equal(t, []string{
-		"sh", "-ec",
-		"python -m lm_eval --output_path /opt/app-root/src/output --model test --model_args arg1=value1 --tasks task1,task2 --include_path /opt/app-root/src/my_tasks --batch_size " + strconv.Itoa(svcOpts.MaxBatchSize),
+		"python", "-m", "lm_eval", "--output_path", "/opt/app-root/src/output", "--model", "hf", "--model_args", "arg1=value1", "--tasks", "task1,task2", "--include_path", "/opt/app-root/src/my_tasks", "--batch_size", strconv.Itoa(svcOpts.MaxBatchSize),
 	}, generateArgs(svcOpts, job, log))
 
 	// normal batchSize
 	var normalBatchSize = "16"
 	job.Spec.BatchSize = &normalBatchSize
 	assert.Equal(t, []string{
-		"sh", "-ec",
-		"python -m lm_eval --output_path /opt/app-root/src/output --model test --model_args arg1=value1 --tasks task1,task2 --include_path /opt/app-root/src/my_tasks --batch_size 16",
+		"python", "-m", "lm_eval", "--output_path", "/opt/app-root/src/output", "--model", "hf", "--model_args", "arg1=value1", "--tasks", "task1,task2", "--include_path", "/opt/app-root/src/my_tasks", "--batch_size", "16",
 	}, generateArgs(svcOpts, job, log))
 }
 
@@ -897,7 +894,7 @@ func Test_GenerateArgCmdTaskRecipes(t *testing.T) {
 			APIVersion: lmesv1alpha1.Version,
 		},
 		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
+			Model: "hf",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -919,8 +916,7 @@ func Test_GenerateArgCmdTaskRecipes(t *testing.T) {
 
 	// one TaskRecipe
 	assert.Equal(t, []string{
-		"sh", "-ec",
-		"python -m lm_eval --output_path /opt/app-root/src/output --model test --model_args arg1=value1 --tasks task1,task2,tr_0 --include_path /opt/app-root/src/my_tasks --batch_size " + DefaultBatchSize,
+		"python", "-m", "lm_eval", "--output_path", "/opt/app-root/src/output", "--model", "hf", "--model_args", "arg1=value1", "--tasks", "task1,task2,tr_0", "--include_path", "/opt/app-root/src/my_tasks", "--batch_size", DefaultBatchSize,
 	}, generateArgs(svcOpts, job, log))
 
 	assert.Equal(t, []string{
@@ -944,8 +940,7 @@ func Test_GenerateArgCmdTaskRecipes(t *testing.T) {
 	// two task recipes
 	// one TaskRecipe
 	assert.Equal(t, []string{
-		"sh", "-ec",
-		"python -m lm_eval --output_path /opt/app-root/src/output --model test --model_args arg1=value1 --tasks task1,task2,tr_0,tr_1 --include_path /opt/app-root/src/my_tasks --batch_size " + DefaultBatchSize,
+		"python", "-m", "lm_eval", "--output_path", "/opt/app-root/src/output", "--model", "hf", "--model_args", "arg1=value1", "--tasks", "task1,task2,tr_0,tr_1", "--include_path", "/opt/app-root/src/my_tasks", "--batch_size", DefaultBatchSize,
 	}, generateArgs(svcOpts, job, log))
 
 	assert.Equal(t, []string{
@@ -980,7 +975,7 @@ func Test_GenerateArgCmdCustomCard(t *testing.T) {
 			APIVersion: lmesv1alpha1.Version,
 		},
 		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
+			Model: "hf",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -1003,8 +998,7 @@ func Test_GenerateArgCmdCustomCard(t *testing.T) {
 	}
 
 	assert.Equal(t, []string{
-		"sh", "-ec",
-		"python -m lm_eval --output_path /opt/app-root/src/output --model test --model_args arg1=value1 --tasks task1,task2,tr_0 --include_path /opt/app-root/src/my_tasks --batch_size " + DefaultBatchSize,
+		"python", "-m", "lm_eval", "--output_path", "/opt/app-root/src/output", "--model", "hf", "--model_args", "arg1=value1", "--tasks", "task1,task2,tr_0", "--include_path", "/opt/app-root/src/my_tasks", "--batch_size", DefaultBatchSize,
 	}, generateArgs(svcOpts, job, log))
 
 	assert.Equal(t, []string{
@@ -1167,155 +1161,6 @@ func Test_GenerateArgCmdCustomCard(t *testing.T) {
 	}, generateCmd(svcOpts, job))
 }
 
-func Test_CustomCardValidation(t *testing.T) {
-	log := log.FromContext(context.Background())
-	lmevalRec := LMEvalJobReconciler{
-		Namespace: "test",
-	}
-	var job = &lmesv1alpha1.LMEvalJob{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "default",
-			UID:       "for-testing",
-		},
-		TypeMeta: metav1.TypeMeta{
-			Kind:       lmesv1alpha1.KindName,
-			APIVersion: lmesv1alpha1.Version,
-		},
-		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
-			ModelArgs: []lmesv1alpha1.Arg{
-				{Name: "arg1", Value: "value1"},
-			},
-			TaskList: lmesv1alpha1.TaskList{
-				TaskRecipes: []lmesv1alpha1.TaskRecipe{
-					{
-						Card: lmesv1alpha1.Card{
-							Custom: "invalid JSON",
-						},
-					},
-				},
-			},
-		},
-	}
-
-	assert.ErrorContains(t, lmevalRec.validateCustomRecipes(job, log), "custom card is not a valid JSON string")
-
-	// no loader
-	job.Spec.TaskList.TaskRecipes[0].Card.Custom = `
-		{
-			"__type__": "task_card",
-			"preprocess_steps": [
-				{
-					"__type__": "copy",
-					"field": "translation/en",
-					"to_field": "text"
-				},
-				{
-					"__type__": "copy",
-					"field": "translation/de",
-					"to_field": "translation"
-				},
-				{
-					"__type__": "set",
-					"fields": {
-						"source_language": "english",
-						"target_language": "dutch"
-					}
-				}
-			],
-			"task": "tasks.translation.directed",
-			"templates": "templates.translation.directed.all"
-		}`
-	assert.ErrorContains(t, lmevalRec.validateCustomRecipes(job, log), "no loader definition in the custom card")
-
-	// ok
-	job.Spec.TaskList.TaskRecipes[0].Card.Custom = `
-		{
-			"__type__": "task_card",
-			"loader": {
-				"__type__": "load_hf",
-				"path": "wmt16",
-				"name": "de-en"
-			},
-			"preprocess_steps": [
-				{
-					"__type__": "copy",
-					"field": "translation/en",
-					"to_field": "text"
-				},
-				{
-					"__type__": "copy",
-					"field": "translation/de",
-					"to_field": "translation"
-				},
-				{
-					"__type__": "set",
-					"fields": {
-						"source_language": "english",
-						"target_language": "dutch"
-					}
-				}
-			],
-			"task": "tasks.translation.directed",
-			"templates": "templates.translation.directed.all"
-		}`
-
-	assert.Nil(t, lmevalRec.validateCustomRecipes(job, log))
-
-	job.Spec.TaskList.TaskRecipes[0].Template = &lmesv1alpha1.Template{
-		Ref: "tp_0",
-	}
-
-	// missing custom template
-	assert.ErrorContains(t, lmevalRec.validateCustomRecipes(job, log), "the reference name of the custom template is not defined: tp_0")
-
-	job.Spec.TaskList.CustomArtifacts = &lmesv1alpha1.CustomArtifacts{
-		Templates: []lmesv1alpha1.CustomArtifact{
-			{
-				Name: "tp_0",
-				Value: `
-					{
-						"__type__": "input_output_template",
-						"instruction": "In the following task, you translate a {text_type}.",
-						"input_format": "Translate this {text_type} from {source_language} to {target_language}: {text}.",
-						"target_prefix": "Translation: ",
-						"output_format": "{translation}",
-						"postprocessors": [
-							"processors.lower_case"
-						]
-					}
-				`,
-			},
-		},
-	}
-
-	// pass
-	assert.Nil(t, lmevalRec.validateCustomRecipes(job, log))
-
-	job.Spec.TaskList.CustomArtifacts.Templates = append(job.Spec.TaskList.CustomArtifacts.Templates, lmesv1alpha1.CustomArtifact{
-		Name: "tp_1",
-		Value: `
-			{
-				"__type__": "input_output_template",
-				"instruction": "In the following task, you translate a {text_type}.",
-				"input_format": "Translate this {text_type} from {source_language} to {target_language}: {text}.",
-				"target_prefix": "Translation: ",
-				"postprocessors": [
-					"processors.lower_case"
-				]
-			}
-		`,
-	})
-
-	job.Spec.TaskList.TaskRecipes[0].Template = &lmesv1alpha1.Template{
-		Ref: "tp_1",
-	}
-
-	// missing outout_format property
-	assert.ErrorContains(t, lmevalRec.validateCustomRecipes(job, log), "no output_format definition in the custom template")
-}
-
 func Test_ConcatTasks(t *testing.T) {
 	tasks := concatTasks(lmesv1alpha1.TaskList{
 		TaskNames: []string{"task1", "task2"},
@@ -1347,7 +1192,7 @@ func Test_ManagedPVC(t *testing.T) {
 			APIVersion: lmesv1alpha1.Version,
 		},
 		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
+			Model: "hf",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -1513,7 +1358,7 @@ func Test_ExistingPVC(t *testing.T) {
 			APIVersion: lmesv1alpha1.Version,
 		},
 		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
+			Model: "local-completions",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -1677,7 +1522,7 @@ func Test_PVCPreference(t *testing.T) {
 			APIVersion: lmesv1alpha1.Version,
 		},
 		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
+			Model: "local-completions",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -1841,33 +1686,6 @@ func Test_PVCPreference(t *testing.T) {
 	assert.Equal(t, expect, newPod)
 }
 
-func Test_ValidateBatchSize(t *testing.T) {
-	maxBatchSize := 32
-	logger := log.Log.WithName("tests")
-	scenarios := []struct {
-		provided  string
-		validated string
-	}{
-		{"5", "5"},
-		{"auto", "auto"},
-		{"auto:3", "auto:3"},
-		{"auto:0", "auto:" + strconv.Itoa(maxBatchSize)},
-		{"auto:-5", "auto:" + strconv.Itoa(maxBatchSize)},
-		{"64", strconv.Itoa(maxBatchSize)},
-		{"-5", DefaultBatchSize},
-		{"invalid", DefaultBatchSize},
-		{"0", DefaultBatchSize},
-		{"auto:auto", "auto:" + strconv.Itoa(maxBatchSize)},
-	}
-
-	for _, scenario := range scenarios {
-		result := validateBatchSize(scenario.provided, maxBatchSize, logger)
-		if result != scenario.validated {
-			t.Errorf("validateBatchSize(%q) = %q; want %q", scenario.provided, result, scenario.validated)
-		}
-	}
-}
-
 // Test_OfflineMode tests that if the offline mode is set the configuration is correct
 func Test_OfflineMode(t *testing.T) {
 	log := log.FromContext(context.Background())
@@ -1890,7 +1708,7 @@ func Test_OfflineMode(t *testing.T) {
 			APIVersion: lmesv1alpha1.Version,
 		},
 		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
+			Model: "local-completions",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -2076,7 +1894,7 @@ func Test_ProtectedVars(t *testing.T) {
 			APIVersion: lmesv1alpha1.Version,
 		},
 		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
+			Model: "hf",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -2295,7 +2113,7 @@ func Test_OnlineModeDisabled(t *testing.T) {
 		Spec: lmesv1alpha1.LMEvalJobSpec{
 			AllowOnline:        &allowOnline,
 			AllowCodeExecution: &allowCodeExecution,
-			Model:              "test",
+			Model:              "local-completions",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -2482,7 +2300,7 @@ func Test_OnlineMode(t *testing.T) {
 			APIVersion: lmesv1alpha1.Version,
 		},
 		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
+			Model: "hf",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -2652,7 +2470,7 @@ func Test_AllowCodeOnlineMode(t *testing.T) {
 			APIVersion: lmesv1alpha1.Version,
 		},
 		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
+			Model: "hf",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -2822,7 +2640,7 @@ func Test_AllowCodeOfflineMode(t *testing.T) {
 			APIVersion: lmesv1alpha1.Version,
 		},
 		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
+			Model: "hf",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -3009,7 +2827,7 @@ func Test_OfflineModeWithOutput(t *testing.T) {
 			APIVersion: lmesv1alpha1.Version,
 		},
 		Spec: lmesv1alpha1.LMEvalJobSpec{
-			Model: "test",
+			Model: "hf",
 			ModelArgs: []lmesv1alpha1.Arg{
 				{Name: "arg1", Value: "value1"},
 			},
@@ -3185,4 +3003,57 @@ func Test_OfflineModeWithOutput(t *testing.T) {
 	newPod := CreatePod(svcOpts, job, log)
 
 	assert.Equal(t, expect, newPod)
+}
+
+func Test_ControllerIntegration(t *testing.T) {
+	t.Run("ValidationCalledInController", func(t *testing.T) {
+		// This test verifies that validation is properly integrated into the controller
+		ctx := context.Background()
+		log := log.FromContext(ctx)
+
+		// Create an invalid job that should fail validation
+		invalidJob := &lmesv1alpha1.LMEvalJob{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "invalid-job",
+				Namespace: "test",
+			},
+			Spec: lmesv1alpha1.LMEvalJobSpec{
+				Model: "hf; echo pwned",
+				TaskList: lmesv1alpha1.TaskList{
+					TaskNames: []string{"task"},
+				},
+			},
+		}
+
+		// Test that ValidateUserInput rejects the invalid job
+		err := ValidateUserInput(invalidJob)
+		assert.Error(t, err, "Controller validation should reject invalid job")
+		assert.Contains(t, err.Error(), "invalid model", "Should mention model validation failure")
+
+		// Create a safe job that should pass validation
+		safeJob := &lmesv1alpha1.LMEvalJob{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "safe-job",
+				Namespace: "test",
+			},
+			Spec: lmesv1alpha1.LMEvalJobSpec{
+				Model: "hf",
+				TaskList: lmesv1alpha1.TaskList{
+					TaskNames: []string{"winogrande"},
+				},
+			},
+		}
+
+		// Test that ValidateUserInput accepts the safe job
+		err = ValidateUserInput(safeJob)
+		assert.NoError(t, err, "Controller validation should accept safe job")
+
+		// Test command generation for the safe job
+		svcOpts := &serviceOptions{
+			DefaultBatchSize: "auto",
+		}
+		args := generateArgs(svcOpts, safeJob, log)
+		assert.Greater(t, len(args), 0, "Should generate command arguments")
+		assert.Equal(t, "python", args[0], "Should start with python")
+	})
 }

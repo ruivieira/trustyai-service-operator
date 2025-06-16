@@ -61,13 +61,16 @@ const (
 )
 
 type Arg struct {
-	Name  string `json:"name"`
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
+	Name string `json:"name"`
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._/:\- ]*$`
 	Value string `json:"value,omitempty"`
 }
 
 type Card struct {
 	// Unitxt card's ID
 	// +optional
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
 	Name string `json:"name,omitempty"`
 	// A JSON string for a custom unitxt card which contains the custom dataset.
 	// Use the documentation here: https://www.unitxt.ai/en/latest/docs/adding_dataset.html#adding-to-the-catalog
@@ -79,6 +82,7 @@ type Card struct {
 type Template struct {
 	// Unitxt template ID
 	// +optional
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
 	Name string `json:"name,omitempty"`
 	// The name of the custom template in the custom field. Its value is a JSON string
 	// for a custom Unitxt template. Use the documentation here: https://www.unitxt.ai/en/latest/docs/adding_template.html
@@ -86,18 +90,22 @@ type Template struct {
 	// add_to_catalog API: https://www.unitxt.ai/en/latest/docs/saving_and_loading_from_catalog.html#adding-assets-to-the-catalog,
 	// and use the JSON content as the value here.
 	// +optional
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
 	Ref string `json:"ref,omitempty"`
 }
 
 type SystemPrompt struct {
 	// Unitxt System Prompt id
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
 	Name string `json:"name,omitempty"`
 	// The name of the custom systemPrompt in the custom field. Its value is a custom system prompt string
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
 	Ref string `json:"ref,omitempty"`
 }
 
 type CustomArtifact struct {
 	// Name of the custom artifact
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
 	Name string `json:"name"`
 	// Value of the custom artifact. It could be a JSON string or plain text
 	// depending on the artifact type
@@ -141,12 +149,15 @@ type TaskRecipe struct {
 	SystemPrompt *SystemPrompt `json:"systemPrompt,omitempty"`
 	// The Unitxt Task
 	// +optional
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
 	Task *string `json:"task,omitempty"`
 	// Metrics
 	// +optional
+	// +kubebuilder:validation:Items:Pattern=`^[a-zA-Z0-9._-]+$`
 	Metrics []string `json:"metrics,omitempty"`
 	// The Unitxt format
 	// +optional
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
 	Format *string `json:"format,omitempty"`
 	// A limit number of records to load
 	// +optional
@@ -161,6 +172,7 @@ type TaskRecipe struct {
 
 type TaskList struct {
 	// TaskNames from lm-eval's task list
+	// +kubebuilder:validation:items:Pattern=`^[a-zA-Z0-9._-]+$`
 	TaskNames []string `json:"taskNames,omitempty"`
 	// Task Recipes specifically for Unitxt
 	TaskRecipes []TaskRecipe `json:"taskRecipes,omitempty"`
@@ -313,14 +325,15 @@ func (p *LMEvalPodSpec) GetSideCards() []corev1.Container {
 }
 
 type OfflineS3Spec struct {
-	AccessKeyIdRef     corev1.SecretKeySelector  `json:"accessKeyId"`
-	SecretAccessKeyRef corev1.SecretKeySelector  `json:"secretAccessKey"`
-	Bucket             corev1.SecretKeySelector  `json:"bucket"`
-	Path               string                    `json:"path"`
-	Region             corev1.SecretKeySelector  `json:"region"`
-	Endpoint           corev1.SecretKeySelector  `json:"endpoint"`
-	VerifySSL          *bool                     `json:"verifySSL,omitempty"`
-	CABundle           *corev1.SecretKeySelector `json:"caBundle,omitempty"`
+	AccessKeyIdRef     corev1.SecretKeySelector `json:"accessKeyId"`
+	SecretAccessKeyRef corev1.SecretKeySelector `json:"secretAccessKey"`
+	Bucket             corev1.SecretKeySelector `json:"bucket"`
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._/-]*$`
+	Path      string                    `json:"path"`
+	Region    corev1.SecretKeySelector  `json:"region"`
+	Endpoint  corev1.SecretKeySelector  `json:"endpoint"`
+	VerifySSL *bool                     `json:"verifySSL,omitempty"`
+	CABundle  *corev1.SecretKeySelector `json:"caBundle,omitempty"`
 }
 
 // OfflineStorageSpec defines the storage configuration for LMEvalJob's offline mode
@@ -354,6 +367,7 @@ type LMEvalJobSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Model name
+	// +kubebuilder:validation:Enum=hf;openai-completions;openai-chat-completions;local-completions;local-chat-completions;watsonx_llm;textsynth
 	Model string `json:"model"`
 	// Args for the model
 	// +optional
@@ -367,6 +381,7 @@ type LMEvalJobSpec struct {
 	// the number of documents to evaluate to the first X documents (if an integer)
 	// per task or first X% of documents per task
 	// +optional
+	// +kubebuilder:validation:Pattern=`^(\d+\.?\d*|\d*\.\d+)$`
 	Limit string `json:"limit,omitempty"`
 	// Map to `--gen_kwargs` parameter for the underlying library.
 	// +optional

@@ -414,6 +414,22 @@ func (r *LMEvalJobReconciler) handleNewCR(ctx context.Context, log logr.Logger, 
 		return ctrl.Result{}, nil
 	}
 
+	// Validate user input
+	if err := ValidateUserInput(job); err != nil {
+		// Input validation failed
+		job.Status.State = lmesv1alpha1.CompleteJobState
+		job.Status.Reason = lmesv1alpha1.FailedReason
+		job.Status.Message = fmt.Sprintf("Input validation failed: %s", err.Error())
+
+		current := v1.Now()
+		job.Status.CompleteTime = &current
+		if err := r.Status().Update(ctx, job); err != nil {
+			log.Error(err, "unable to update LMEvalJob status for input validation error")
+		}
+		log.Error(err, "Input validation failed for LMEvalJob", "name", job.Name)
+		return ctrl.Result{}, err
+	}
+
 	// Validate the custom card if exists
 	// FIXME: Move the validation to the webhook once we enable it.
 	if err := r.validateCustomRecipes(job, log); err != nil {
@@ -1174,10 +1190,13 @@ func generateArgs(svcOpts *serviceOptions, job *lmesv1alpha1.LMEvalJob, log logr
 		return nil
 	}
 
-	cmds := make([]string, 0, 10)
-	cmds = append(cmds, "python", "-m", "lm_eval", "--output_path", "/opt/app-root/src/output")
-	// --model
-	cmds = append(cmds, "--model", job.Spec.Model)
+	// Use safer command construction with proper argument escaping
+	cmds := []string{
+		"python", "-m", "lm_eval",
+		"--output_path", "/opt/app-root/src/output",
+		"--model", job.Spec.Model,
+	}
+
 	// --model_args
 	if job.Spec.ModelArgs != nil {
 		cmds = append(cmds, "--model_args", argsToString(job.Spec.ModelArgs))
@@ -1211,7 +1230,7 @@ func generateArgs(svcOpts *serviceOptions, job *lmesv1alpha1.LMEvalJob, log logr
 
 	cmds = append(cmds, "--batch_size", batchSize)
 
-	return []string{"sh", "-ec", strings.Join(cmds, " ")}
+	return cmds
 }
 
 func concatTasks(tasks lmesv1alpha1.TaskList) []string {
