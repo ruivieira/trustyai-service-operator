@@ -90,22 +90,18 @@ type Template struct {
 	// add_to_catalog API: https://www.unitxt.ai/en/latest/docs/saving_and_loading_from_catalog.html#adding-assets-to-the-catalog,
 	// and use the JSON content as the value here.
 	// +optional
-	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
 	Ref string `json:"ref,omitempty"`
 }
 
 type SystemPrompt struct {
 	// Unitxt System Prompt id
-	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
 	Name string `json:"name,omitempty"`
 	// The name of the custom systemPrompt in the custom field. Its value is a custom system prompt string
-	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
 	Ref string `json:"ref,omitempty"`
 }
 
 type CustomArtifact struct {
 	// Name of the custom artifact
-	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
 	Name string `json:"name"`
 	// Value of the custom artifact. It could be a JSON string or plain text
 	// depending on the artifact type
@@ -153,11 +149,9 @@ type TaskRecipe struct {
 	Task *string `json:"task,omitempty"`
 	// Metrics
 	// +optional
-	// +kubebuilder:validation:Items:Pattern=`^[a-zA-Z0-9._-]+$`
 	Metrics []string `json:"metrics,omitempty"`
 	// The Unitxt format
 	// +optional
-	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
 	Format *string `json:"format,omitempty"`
 	// A limit number of records to load
 	// +optional
