@@ -1266,10 +1266,6 @@ func generateCmd(svcOpts *serviceOptions, job *lmesv1alpha1.LMEvalJob) []string 
 		cmds = append(cmds, "--listen-port", fmt.Sprintf("%d", svcOpts.DriverPort))
 	}
 
-	if svcOpts.DriverPort != 0 && svcOpts.DriverPort != driver.DefaultPort {
-		cmds = append(cmds, "--listen-port", fmt.Sprintf("%d", svcOpts.DriverPort))
-	}
-
 	cr_idx := 0
 	for _, recipe := range job.Spec.TaskList.TaskRecipes {
 		// duplicate the TaskRecipe and update its content to generate proper recipe string
