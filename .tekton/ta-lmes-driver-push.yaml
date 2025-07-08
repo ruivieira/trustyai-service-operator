@@ -23,7 +23,7 @@ spec:
   - name: revision
     value: '{{revision}}'
   - name: output-image
-    value: quay.io/opendatahub/ta-lmes-driver:v1.39.0
+    value: quay.io/opendatahub/ta-lmes-driver:v1.40.0
   - name: dockerfile
     value: Dockerfile.driver
   - name: path-context
