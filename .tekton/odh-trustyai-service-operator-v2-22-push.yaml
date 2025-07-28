@@ -1,6 +1,5 @@
 apiVersion: tekton.dev/v1
 kind: PipelineRun
-#test
 metadata:
   annotations:
     build.appstudio.openshift.io/repo: https://github.com/red-hat-data-services/trustyai-service-operator?rev={{revision}}
@@ -30,7 +29,7 @@ spec:
     - '{{target_branch}}-{{revision}}'
   - name: additional-labels
     value: 
-    - version=v2.22.0
+    - version=v2.22.1
     - io.openshift.tags=odh-trustyai-service-operator
   - name: output-image
     value: quay.io/rhoai/odh-trustyai-service-operator-rhel9:{{target_branch}}
