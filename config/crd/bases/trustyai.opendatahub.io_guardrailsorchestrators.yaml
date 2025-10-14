@@ -57,6 +57,9 @@ spec:
                 required:
                 - inferenceServiceToGuardrail
                 type: object
+              customDetectorsConfig:
+                description: Name of configmap containing user-defined Python detectors
+                type: string
               enableBuiltInDetectors:
                 description: Boolean flag to enable/disable built-in detectors
                 type: boolean
@@ -108,6 +111,12 @@ spec:
                   Number of replicas
                 format: int32
                 type: integer
+              tlsSecrets:
+                description: Define TLS secrets to be mounted to the orchestrator.
+                  Secrets will be mounted at /etc/tls/$SECRET_NAME
+                items:
+                  type: string
+                type: array
             required:
             - replicas
             type: object
