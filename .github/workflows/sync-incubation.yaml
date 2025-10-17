@@ -4,6 +4,10 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   sync-branches:
     if: github.repository == 'opendatahub-io/trustyai-service-operator'
