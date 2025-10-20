@@ -54,9 +54,18 @@ spec:
                     description: The name of the inference service that provides the
                       vLLM generation model to-be-guardrailed
                     type: string
+                  useTLS:
+                    description: |-
+                      Whether the autoconfig should set up TLS connections to detectors and the generative model
+                      TLS connections are not currently supported if using kube-rbac-proxy to authenticate to the orchestrator.
+                    type: boolean
                 required:
                 - inferenceServiceToGuardrail
                 type: object
+              customDetectorsConfig:
+                description: Name of configmap containing user-defined Python detectors.
+                  This is only used if EnableBuiltInDetectors is true
+                type: string
               enableBuiltInDetectors:
                 description: Boolean flag to enable/disable built-in detectors
                 type: boolean
@@ -79,26 +88,21 @@ spec:
                 description: List of orchestrator enviroment variables for configuring
                   the OTLP exporter
                 properties:
-                  metricsEndpoint:
+                  enableMetrics:
+                    description: Specifies whether to enable metrics data export
+                    type: boolean
+                  enableTraces:
+                    description: Specifies whether to enable tracing data export
+                    type: boolean
+                  otlpMetricsEndpoint:
                     description: Overrides the OTLP endpoint for metrics
                     type: string
-                  metricsProtocol:
-                    description: Overrides the protocol for traces
+                  otlpProtocol:
+                    default: grpc
+                    description: Sets the protocol for both traces and metrics
                     type: string
-                  otlpEndpoint:
-                    description: Sets the OTLP endpoint
-                    type: string
-                  otlpExport:
-                    description: Specifies which data types to export
-                    type: string
-                  protocol:
-                    description: Sets the protocol for all the OTLP endpoints
-                    type: string
-                  tracesEndpoint:
+                  otlpTracesEndpoint:
                     description: Overrides the OTLP endpoint for traces
-                    type: string
-                  tracesProtocol:
-                    description: Overrides the protocol for traces
                     type: string
                 type: object
               replicas:
@@ -108,6 +112,12 @@ spec:
                   Number of replicas
                 format: int32
                 type: integer
+              tlsSecrets:
+                description: Define TLS secrets to be mounted to the orchestrator.
+                  Secrets will be mounted at /etc/tls/$SECRET_NAME
+                items:
+                  type: string
+                type: array
             required:
             - replicas
             type: object

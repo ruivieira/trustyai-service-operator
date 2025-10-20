@@ -19,6 +19,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sort"
 	"strconv"
 	"strings"
@@ -151,6 +152,7 @@ func (r *GuardrailsOrchestratorReconciler) getInferenceServicesAndServingRuntime
 	if err := r.List(ctx, &servingRuntimes, &client.ListOptions{
 		Namespace: namespace,
 	}); err != nil || len(servingRuntimes.Items) == 0 {
+		log.FromContext(ctx).Error(err, "could not list all ServingRuntimes in namespace %s", namespace)
 		return kservev1beta1.InferenceServiceList{}, v1alpha1.ServingRuntimeList{}, fmt.Errorf("could not automatically find serving runtimes: %w", err)
 	}
 
@@ -158,7 +160,7 @@ func (r *GuardrailsOrchestratorReconciler) getInferenceServicesAndServingRuntime
 }
 
 // extractInferenceServiceInfo reads an inference service (and corresponding serving runtime) to determine the ISVC's protocol, URL, and port
-func (r *GuardrailsOrchestratorReconciler) extractInferenceServiceInfo(ctx context.Context, namespace string, isvc kservev1beta1.InferenceService, servingRuntimes v1alpha1.ServingRuntimeList) (*gorchv1alpha1.DetectedService, error) {
+func (r *GuardrailsOrchestratorReconciler) extractInferenceServiceInfo(ctx context.Context, namespace string, isvc kservev1beta1.InferenceService, servingRuntimes v1alpha1.ServingRuntimeList, orchestrator *gorchv1alpha1.GuardrailsOrchestrator) (*gorchv1alpha1.DetectedService, error) {
 	log := ctrl.Log.WithName("AutoConfigurator | Orchestrator ConfigMap Definer |")
 	url, err := url.Parse(isvc.Status.URL.String())
 	if err != nil {
@@ -167,7 +169,7 @@ func (r *GuardrailsOrchestratorReconciler) extractInferenceServiceInfo(ctx conte
 
 	port := url.Port()
 	// if the ISVC is not listing a port, find it from the serving runtime
-	if port == "" {
+	if !orchestrator.Spec.AutoConfig.UseTLS || port == "" {
 		var matchingGenerationRuntime *v1alpha1.ServingRuntime
 		for _, servingRuntime := range servingRuntimes.Items {
 			if servingRuntime.Name == *isvc.Spec.Predictor.Model.Runtime {
@@ -180,6 +182,11 @@ func (r *GuardrailsOrchestratorReconciler) extractInferenceServiceInfo(ctx conte
 		} else {
 			port = strconv.Itoa(int(matchingGenerationRuntime.Spec.Containers[0].Ports[0].ContainerPort))
 		}
+	}
+
+	// enforce http if auto-config tls is turned off
+	if !orchestrator.Spec.AutoConfig.UseTLS {
+		url.Scheme = "http"
 	}
 
 	if url.Scheme == "https" {
@@ -237,7 +244,7 @@ func (r *GuardrailsOrchestratorReconciler) defineOrchestratorConfigMap(
 	} else {
 		for _, isvc := range allInferenceServices.Items {
 			if isvc.Name == inferenceServiceToGuardrail && isvc.Status.URL != nil {
-				detectedGenerationService, err = r.extractInferenceServiceInfo(ctx, namespace, isvc, allServingRuntimes)
+				detectedGenerationService, err = r.extractInferenceServiceInfo(ctx, namespace, isvc, allServingRuntimes, orchestrator)
 				if err != nil {
 					return nil, nil, nil, nil, err
 				}
@@ -245,7 +252,7 @@ func (r *GuardrailsOrchestratorReconciler) defineOrchestratorConfigMap(
 			}
 		}
 	}
-	if detectedGenerationService.Hostname == "" || detectedGenerationService.Port == "" {
+	if detectedGenerationService == nil || detectedGenerationService.Hostname == "" || detectedGenerationService.Port == "" {
 		return nil, nil, nil, nil, fmt.Errorf("could not find InferenceService with name %q in namespace %s", inferenceServiceToGuardrail, namespace)
 	} else {
 		log.V(2).Info("Generation service resolved", "Generation service", detectedGenerationService)
@@ -274,7 +281,7 @@ func (r *GuardrailsOrchestratorReconciler) defineOrchestratorConfigMap(
 
 	for _, isvc := range sortedDetectorItems {
 		if isvc.Status.URL != nil {
-			detectedDetectorService, err := r.extractInferenceServiceInfo(ctx, namespace, isvc, allServingRuntimes)
+			detectedDetectorService, err := r.extractInferenceServiceInfo(ctx, namespace, isvc, allServingRuntimes, orchestrator)
 			if err != nil {
 				return nil, nil, nil, nil, err
 			}
