@@ -61,13 +61,16 @@ const (
 )
 
 type Arg struct {
-	Name  string `json:"name"`
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
+	Name string `json:"name"`
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._/:\- ]*$`
 	Value string `json:"value,omitempty"`
 }
 
 type Card struct {
 	// Unitxt card's ID
 	// +optional
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
 	Name string `json:"name,omitempty"`
 	// A JSON string for a custom unitxt card which contains the custom dataset.
 	// Use the documentation here: https://www.unitxt.ai/en/latest/docs/adding_dataset.html#adding-to-the-catalog
@@ -106,6 +109,7 @@ type TaskRecipe struct {
 
 type TaskList struct {
 	// TaskNames from lm-eval's task list
+	// +kubebuilder:validation:items:Pattern=`^[a-zA-Z0-9._-]+$`
 	TaskNames []string `json:"taskNames,omitempty"`
 	// Task Recipes specifically for Unitxt
 	TaskRecipes []TaskRecipe `json:"taskRecipes,omitempty"`
@@ -267,6 +271,7 @@ type LMEvalJobSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Model name
+	// +kubebuilder:validation:Enum=hf;openai-completions;openai-chat-completions;local-completions;local-chat-completions;watsonx_llm;textsynth
 	Model string `json:"model"`
 	// Args for the model
 	// +optional
@@ -280,6 +285,7 @@ type LMEvalJobSpec struct {
 	// the number of documents to evaluate to the first X documents (if an integer)
 	// per task or first X% of documents per task
 	// +optional
+	// +kubebuilder:validation:Pattern=`^(\d+\.?\d*|\d*\.\d+)$`
 	Limit string `json:"limit,omitempty"`
 	// Map to `--gen_kwargs` parameter for the underlying library.
 	// +optional
