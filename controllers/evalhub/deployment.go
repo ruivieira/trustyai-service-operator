@@ -119,11 +119,48 @@ func (r *EvalHubReconciler) buildDeploymentSpec(ctx context.Context, instance *e
 			Name:  "EVALHUB_INSTANCE_NAME",
 			Value: instance.Name,
 		},
+		{
+			Name:  "MLFLOW_CA_CERT_PATH",
+			Value: serviceCAMountPath + "/" + serviceCACertFile,
+		},
+		{
+			Name:  "MLFLOW_WORKSPACE",
+			Value: instance.Namespace,
+		},
+		{
+			Name:  "MLFLOW_TOKEN_PATH",
+			Value: mlflowTokenMountPath + "/" + mlflowTokenFile,
+		},
 	}
 
 	// Merge environment variables with CR values taking precedence
 	env := mergeEnvVars(defaultEnvVars, instance.Spec.Env)
 
+	// Build volume mounts for the evalhub container
+	volumeMounts := []corev1.VolumeMount{
+		{
+			Name:      "evalhub-config",
+			MountPath: "/etc/evalhub",
+			ReadOnly:  true,
+		},
+		{
+			Name:      serviceCAVolumeName,
+			MountPath: serviceCAMountPath,
+			ReadOnly:  true,
+		},
+		{
+			Name:      mlflowTokenVolumeName,
+			MountPath: mlflowTokenMountPath,
+			ReadOnly:  true,
+		},
+	}
+	if instance.Spec.IsDatabaseConfigured() {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      dbSecretVolumeName,
+			MountPath: dbSecretMountPath,
+			ReadOnly:  true,
+		})
+	}
 	// Container definition based on k8s examples
 	container := corev1.Container{
 		Name:            containerName,
@@ -139,13 +176,7 @@ func (r *EvalHubReconciler) buildDeploymentSpec(ctx context.Context, instance *e
 		Env:             env,
 		Resources:       defaultResourceRequirements,
 		SecurityContext: defaultSecurityContext,
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      "evalhub-config",
-				MountPath: "/etc/evalhub",
-				ReadOnly:  true,
-			},
-		},
+		VolumeMounts:    volumeMounts,
 		// Exec probes are used because the API listens on 127.0.0.1 only (for security).
 		// HTTPGet probes from kubelet wouldn't reach localhost, so we use curl from inside the container.
 		LivenessProbe: &corev1.Probe{
@@ -256,6 +287,76 @@ func (r *EvalHubReconciler) buildDeploymentSpec(ctx context.Context, instance *e
 		},
 	}
 
+	// Build volumes list
+	volumes := []corev1.Volume{
+		{
+			Name: "evalhub-config",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: instance.Name + "-config",
+					},
+				},
+			},
+		},
+		{
+			Name: "kube-rbac-proxy-config",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: instance.Name + "-proxy-config",
+					},
+				},
+			},
+		},
+		{
+			Name: instance.Name + "-tls",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: instance.Name + "-tls",
+				},
+			},
+		},
+		{
+			Name: serviceCAVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: instance.Name + "-service-ca",
+					},
+				},
+			},
+		},
+		{
+			Name: mlflowTokenVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Projected: &corev1.ProjectedVolumeSource{
+					Sources: []corev1.VolumeProjection{
+						{
+							ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+								Path:              mlflowTokenFile,
+								ExpirationSeconds: func() *int64 { e := int64(mlflowTokenExpiration); return &e }(),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	if instance.Spec.IsDatabaseConfigured() {
+		volumes = append(volumes, corev1.Volume{
+			Name: dbSecretVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: instance.Spec.Database.Secret,
+					Items: []corev1.KeyToPath{
+						{Key: dbSecretKey, Path: dbSecretKey},
+					},
+					DefaultMode: func() *int32 { i := int32(420); return &i }(),
+				},
+			},
+		})
+	}
 	// Pod template with both containers and required volumes
 	podTemplate := corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
@@ -266,36 +367,7 @@ func (r *EvalHubReconciler) buildDeploymentSpec(ctx context.Context, instance *e
 			Containers:         []corev1.Container{container, proxyContainer},
 			SecurityContext:    defaultPodSecurityContext,
 			RestartPolicy:      corev1.RestartPolicyAlways,
-			Volumes: []corev1.Volume{
-				{
-					Name: "evalhub-config",
-					VolumeSource: corev1.VolumeSource{
-						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: instance.Name + "-config",
-							},
-						},
-					},
-				},
-				{
-					Name: "kube-rbac-proxy-config",
-					VolumeSource: corev1.VolumeSource{
-						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: instance.Name + "-proxy-config",
-							},
-						},
-					},
-				},
-				{
-					Name: instance.Name + "-tls",
-					VolumeSource: corev1.VolumeSource{
-						Secret: &corev1.SecretVolumeSource{
-							SecretName: instance.Name + "-tls",
-						},
-					},
-				},
-			},
+			Volumes:            volumes,
 		},
 	}
 

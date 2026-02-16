@@ -30,6 +30,25 @@ const (
 
 	// Route configuration
 	routeName = "evalhub"
+
+	// Database configuration
+	dbSecretVolumeName = "evalhub-db-secret"
+	dbSecretMountPath  = "/etc/evalhub/secrets"
+	dbSecretKey        = "db-url"
+	dbDriver           = "pgx"
+	dbDefaultMaxOpen   = 25
+	dbDefaultMaxIdle   = 5
+
+	// Service CA configuration
+	serviceCAVolumeName = "service-ca"
+	serviceCAMountPath  = "/etc/evalhub/ca"
+	serviceCACertFile   = "service-ca.crt"
+
+	// MLFlow projected token configuration
+	mlflowTokenVolumeName = "mlflow-token"
+	mlflowTokenMountPath  = "/var/run/secrets/mlflow"
+	mlflowTokenFile       = "token"
+	mlflowTokenExpiration = 3600 // seconds
 )
 
 var (
