@@ -44,6 +44,7 @@ type EvalHubReconciler struct {
 //+kubebuilder:rbac:groups=trustyai.opendatahub.io,resources=evalhubs/proxy,verbs=get;create
 //+kubebuilder:rbac:groups=trustyai.opendatahub.io,resources=evalhubs/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=trustyai.opendatahub.io,resources=evalhubs/finalizers,verbs=update
+//+kubebuilder:rbac:groups=trustyai.opendatahub.io,resources=status-events,verbs=create
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=list;watch;get;create;update;patch;delete
 //+kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
@@ -103,7 +104,7 @@ func (r *EvalHubReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return RequeueWithDelay(time.Second * 5)
 	}
 
-	// Create ServiceAccount for kube-rbac-proxy
+	// Create ServiceAccount for EvalHub
 	err = r.createServiceAccount(ctx, instance)
 	if err != nil {
 		log.Error(err, "Failed to create ServiceAccount")
@@ -112,11 +113,13 @@ func (r *EvalHubReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return RequeueWithError(err)
 	}
 
-	// Create ServiceAccount for jobs
-	err = r.createJobsServiceAccount(ctx, instance)
+	// Create ServiceAccount for jobs in the instance namespace.
+	// For multi-tenant setups, the tenant namespace watcher will create
+	// additional job SAs in tenant namespaces.
+	err = r.createJobsServiceAccount(ctx, instance, instance.Namespace)
 	if err != nil {
-		log.Error(err, "Failed to create Jobs ServiceAccount")
-		instance.SetStatus("Ready", "Error", fmt.Sprintf("Failed to create Jobs ServiceAccount: %v", err), corev1.ConditionFalse)
+		log.Error(err, "Failed to create job ServiceAccount")
+		instance.SetStatus("Ready", "Error", fmt.Sprintf("Failed to create job ServiceAccount: %v", err), corev1.ConditionFalse)
 		r.Status().Update(ctx, instance)
 		return RequeueWithError(err)
 	}
@@ -129,14 +132,6 @@ func (r *EvalHubReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return RequeueWithError(err)
 	}
 
-	// Reconcile Proxy ConfigMap
-	if err := r.reconcileProxyConfigMap(ctx, instance); err != nil {
-		log.Error(err, "Failed to reconcile Proxy ConfigMap")
-		instance.SetStatus("Ready", "Error", fmt.Sprintf("Failed to reconcile Proxy ConfigMap: %v", err), corev1.ConditionFalse)
-		r.Status().Update(ctx, instance)
-		return RequeueWithError(err)
-	}
-
 	// Reconcile Service CA ConfigMap (for jobs to mount service CA certificate)
 	if err := r.reconcileServiceCAConfigMap(ctx, instance); err != nil {
 		log.Error(err, "Failed to reconcile Service CA ConfigMap")
@@ -145,8 +140,18 @@ func (r *EvalHubReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return RequeueWithError(err)
 	}
 
+	// Reconcile Provider ConfigMaps (copy from operator namespace to instance namespace)
+	providerCMNames, err := r.reconcileProviderConfigMaps(ctx, instance)
+	if err != nil {
+		log.Error(err, "Failed to reconcile Provider ConfigMaps")
+		instance.SetStatus("Ready", "Error", fmt.Sprintf("Failed to reconcile Provider ConfigMaps: %v", err), corev1.ConditionFalse)
+		r.Status().Update(ctx, instance)
+		return RequeueWithError(err)
+	}
+	instance.Status.ActiveProviders = instance.Spec.Providers
+
 	// Reconcile Deployment
-	if err := r.reconcileDeployment(ctx, instance); err != nil {
+	if err := r.reconcileDeployment(ctx, instance, providerCMNames); err != nil {
 		log.Error(err, "Failed to reconcile Deployment")
 		instance.SetStatus("Ready", "Error", fmt.Sprintf("Failed to reconcile Deployment: %v", err), corev1.ConditionFalse)
 		r.Status().Update(ctx, instance)
@@ -221,6 +226,12 @@ func (r *EvalHubReconciler) handleDeletion(ctx context.Context, instance *evalhu
 		return RequeueWithError(err)
 	}
 
+	// Clean up job resources (SA, Roles, RoleBindings) which use labels instead of owner refs
+	if err := r.cleanupJobResources(ctx, instance); err != nil {
+		log.Error(err, "Failed to cleanup job resources")
+		return RequeueWithError(err)
+	}
+
 	// Remove finalizer
 	controllerutil.RemoveFinalizer(instance, evalhubv1alpha1.FinalizerName)
 	if err := r.Update(ctx, instance); err != nil {
@@ -232,12 +243,60 @@ func (r *EvalHubReconciler) handleDeletion(ctx context.Context, instance *evalhu
 }
 
 // cleanupClusterRoleBinding deletes EvalHub cluster-scoped RBAC resources upon instance deletion.
-// Namespace-scoped resources (RoleBindings, ServiceAccounts) are garbage-collected via owner references.
 func (r *EvalHubReconciler) cleanupClusterRoleBinding(ctx context.Context, instance *evalhubv1alpha1.EvalHub) error {
 	// Delete auth reviewer ClusterRoleBinding (cannot be owner-ref'd to a namespaced resource)
 	authCRBName := generateAuthReviewerClusterRoleBindingName(instance)
 	if err := r.deleteClusterRoleBinding(ctx, authCRBName); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// cleanupJobResources deletes job-related resources (ServiceAccounts, Roles, RoleBindings)
+// that are identified by the eval-hub.trustyai.opendatahub.io label. These resources do not
+// use owner references because they may reside in a different namespace from the EvalHub CR.
+func (r *EvalHubReconciler) cleanupJobResources(ctx context.Context, instance *evalhubv1alpha1.EvalHub) error {
+	log := log.FromContext(ctx)
+	selector := client.MatchingLabels{
+		"eval-hub.trustyai.opendatahub.io": jobResourceInstanceID(instance),
+		"app.kubernetes.io/component":      "job",
+	}
+
+	// Delete RoleBindings
+	rbList := &rbacv1.RoleBindingList{}
+	if err := r.List(ctx, rbList, selector); err != nil {
+		return err
+	}
+	for i := range rbList.Items {
+		log.Info("Deleting job RoleBinding", "Name", rbList.Items[i].Name, "Namespace", rbList.Items[i].Namespace)
+		if err := r.Delete(ctx, &rbList.Items[i]); err != nil && !errors.IsNotFound(err) {
+			return err
+		}
+	}
+
+	// Delete Roles
+	roleList := &rbacv1.RoleList{}
+	if err := r.List(ctx, roleList, selector); err != nil {
+		return err
+	}
+	for i := range roleList.Items {
+		log.Info("Deleting job Role", "Name", roleList.Items[i].Name, "Namespace", roleList.Items[i].Namespace)
+		if err := r.Delete(ctx, &roleList.Items[i]); err != nil && !errors.IsNotFound(err) {
+			return err
+		}
+	}
+
+	// Delete ServiceAccounts
+	saList := &corev1.ServiceAccountList{}
+	if err := r.List(ctx, saList, selector); err != nil {
+		return err
+	}
+	for i := range saList.Items {
+		log.Info("Deleting job ServiceAccount", "Name", saList.Items[i].Name, "Namespace", saList.Items[i].Namespace)
+		if err := r.Delete(ctx, &saList.Items[i]); err != nil && !errors.IsNotFound(err) {
+			return err
+		}
 	}
 
 	return nil
@@ -297,9 +356,9 @@ func (r *EvalHubReconciler) updateStatus(ctx context.Context, instance *evalhubv
 		instance.Status.Ready = corev1.ConditionTrue
 		instance.SetStatus("Ready", "DeploymentReady", "All replicas are ready", corev1.ConditionTrue)
 
-		// Set URL based on service (kube-rbac-proxy)
+		// Set URL based on service
 		instance.Status.URL = fmt.Sprintf("https://%s.%s.svc.cluster.local:%d",
-			instance.Name, instance.Namespace, kubeRBACProxyPort)
+			instance.Name, instance.Namespace, servicePort)
 	} else {
 		instance.Status.Phase = "Pending"
 		instance.Status.Ready = corev1.ConditionFalse

@@ -14,19 +14,20 @@ const (
 
 	// Container configuration
 	containerName = "evalhub"
-	containerPort = 8080
+	containerPort = 8443
 
 	// Service configuration
 	serviceName = "evalhub"
-	servicePort = 8080
+	servicePort = 8443
 
 	// Configuration constants
-	configMapName                  = "trustyai-service-operator-config"
-	configMapEvalHubImageKey       = "evalHubImage"
-	configMapKubeRBACProxyImageKey = "kube-rbac-proxy"
+	configMapName            = "trustyai-service-operator-config"
+	configMapEvalHubImageKey = "evalHubImage"
 
-	// kube-rbac-proxy configuration
-	kubeRBACProxyPort = 8443
+	// TLS configuration (OpenShift service serving certificates)
+	tlsSecretMountPath = "/etc/tls/private"
+	tlsCertFile        = "tls.crt"
+	tlsKeyFile         = "tls.key"
 
 	// Route configuration
 	routeName = "evalhub"
@@ -49,6 +50,15 @@ const (
 	mlflowTokenMountPath  = "/var/run/secrets/mlflow"
 	mlflowTokenFile       = "token"
 	mlflowTokenExpiration = 3600 // seconds
+
+	// EvalHub config directory (contains config.yaml and providers/ subdir)
+	configDirPath = "/etc/evalhub/config"
+
+	// Provider ConfigMap configuration
+	providerLabel       = "trustyai.opendatahub.io/evalhub-provider-type"
+	providerNameLabel   = "trustyai.opendatahub.io/evalhub-provider-name"
+	providersVolumeName = "evalhub-providers"
+	providersMountPath  = configDirPath + "/providers"
 )
 
 var (
