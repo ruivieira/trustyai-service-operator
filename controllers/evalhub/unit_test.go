@@ -248,9 +248,19 @@ func TestEvalHubReconciler_reconcileConfigMap(t *testing.T) {
 		},
 	}
 
+	operatorCM := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      configMapName,
+			Namespace: testNamespace,
+		},
+		Data: map[string]string{
+			configMapEvalHubImageKey: "quay.io/evalhub/evalhub:test",
+		},
+	}
+
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithObjects(evalHub).
+		WithObjects(evalHub, operatorCM).
 		Build()
 
 	reconciler := &EvalHubReconciler{
@@ -549,6 +559,35 @@ func TestEvalHubReconciler_createJobsServiceAccount(t *testing.T) {
 			Namespace: testNamespace,
 		}, jobsSA)
 		require.NoError(t, err)
+	})
+
+	t.Run("should create MLFlow service SA RoleBinding in target namespace", func(t *testing.T) {
+		// The RoleBinding created by the first sub-test should reference the full
+		// MLFlow access ClusterRole and bind the service SA (not the job SA).
+		rbName := normalizeDNS1123LabelValue(evalHubName + "-" + testNamespace + "-mlflow-service-rb")
+		rb := &rbacv1.RoleBinding{}
+		err := fakeClient.Get(ctx, types.NamespacedName{
+			Name:      rbName,
+			Namespace: testNamespace,
+		}, rb)
+		require.NoError(t, err)
+
+		// Should reference the full MLFlow access ClusterRole, not the restricted jobs role
+		assert.Equal(t, "ClusterRole", rb.RoleRef.Kind)
+		assert.Equal(t, mlflowAccessClusterRoleName, rb.RoleRef.Name)
+		assert.Equal(t, rbacv1.GroupName, rb.RoleRef.APIGroup)
+
+		// Subject must be the service SA, not the job SA
+		svcSAName := generateServiceAccountName(evalHub)
+		require.Len(t, rb.Subjects, 1)
+		assert.Equal(t, "ServiceAccount", rb.Subjects[0].Kind)
+		assert.Equal(t, svcSAName, rb.Subjects[0].Name)
+		assert.Equal(t, testNamespace, rb.Subjects[0].Namespace)
+
+		// No owner references — cleanup is label-based via the finalizer
+		assert.Empty(t, rb.OwnerReferences)
+		assert.Equal(t, jobResourceInstanceID(evalHub), rb.Labels["eval-hub.trustyai.opendatahub.io"])
+		assert.Equal(t, "job", rb.Labels["app.kubernetes.io/component"])
 	})
 }
 
@@ -1676,5 +1715,423 @@ func TestEvalHubReconciler_reconcileProviderConfigMaps(t *testing.T) {
 		require.NotNil(t, providersMount, "providers volume mount should be present")
 		assert.Equal(t, providersMountPath, providersMount.MountPath)
 		assert.True(t, providersMount.ReadOnly)
+	})
+}
+
+// TestEvalHubReconciler_createTenantServiceCAConfigMap verifies that the service CA
+// ConfigMap is created in tenant namespaces with the inject-cabundle annotation
+// and job resource labels for cleanup.
+func TestEvalHubReconciler_createTenantServiceCAConfigMap(t *testing.T) {
+	scheme := runtime.NewScheme()
+	require.NoError(t, corev1.AddToScheme(scheme))
+	require.NoError(t, evalhubv1alpha1.AddToScheme(scheme))
+
+	ctx := context.Background()
+	instanceNamespace := "opendatahub"
+	tenantNamespace := "team-a"
+	evalHubName := "evalhub"
+
+	evalHub := &evalhubv1alpha1.EvalHub{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      evalHubName,
+			Namespace: instanceNamespace,
+			UID:       "test-uid-456",
+		},
+	}
+
+	t.Run("should create ConfigMap in tenant namespace", func(t *testing.T) {
+		tenantNS := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{Name: tenantNamespace},
+		}
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(evalHub, tenantNS).
+			Build()
+
+		reconciler := &EvalHubReconciler{
+			Client:        fakeClient,
+			Scheme:        scheme,
+			EventRecorder: record.NewFakeRecorder(10),
+		}
+
+		err := reconciler.createTenantServiceCAConfigMap(ctx, evalHub, tenantNamespace)
+		require.NoError(t, err)
+
+		// Verify ConfigMap was created in tenant namespace
+		cmName := evalHubName + "-service-ca"
+		cm := &corev1.ConfigMap{}
+		err = fakeClient.Get(ctx, types.NamespacedName{
+			Name:      cmName,
+			Namespace: tenantNamespace,
+		}, cm)
+		require.NoError(t, err)
+
+		assert.Equal(t, cmName, cm.Name)
+		assert.Equal(t, tenantNamespace, cm.Namespace)
+		assert.Equal(t, "true", cm.Annotations["service.beta.openshift.io/inject-cabundle"])
+
+		// Should have job resource labels for cleanup
+		assert.Equal(t, "eval-hub", cm.Labels["app"])
+		assert.Equal(t, "trustyai-service-operator", cm.Labels["app.kubernetes.io/managed-by"])
+		assert.Equal(t, "job", cm.Labels["app.kubernetes.io/component"])
+
+		// Should NOT have owner references (cross-namespace)
+		assert.Empty(t, cm.OwnerReferences)
+	})
+
+	t.Run("should not recreate existing ConfigMap", func(t *testing.T) {
+		cmName := evalHubName + "-service-ca"
+		existingCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      cmName,
+				Namespace: tenantNamespace,
+				Annotations: map[string]string{
+					"service.beta.openshift.io/inject-cabundle": "true",
+				},
+				Labels: map[string]string{
+					"custom-label": "keep-me",
+				},
+			},
+			Data: map[string]string{
+				"service-ca.crt": "existing-cert-data",
+			},
+		}
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(evalHub, existingCM).
+			Build()
+
+		reconciler := &EvalHubReconciler{
+			Client:        fakeClient,
+			Scheme:        scheme,
+			EventRecorder: record.NewFakeRecorder(10),
+		}
+
+		err := reconciler.createTenantServiceCAConfigMap(ctx, evalHub, tenantNamespace)
+		require.NoError(t, err)
+
+		// Verify data was preserved
+		cm := &corev1.ConfigMap{}
+		err = fakeClient.Get(ctx, types.NamespacedName{
+			Name:      cmName,
+			Namespace: tenantNamespace,
+		}, cm)
+		require.NoError(t, err)
+
+		assert.Equal(t, "existing-cert-data", cm.Data["service-ca.crt"])
+		assert.Equal(t, "keep-me", cm.Labels["custom-label"])
+	})
+
+	t.Run("should fix missing annotation on existing ConfigMap", func(t *testing.T) {
+		cmName := evalHubName + "-service-ca"
+		existingCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      cmName,
+				Namespace: tenantNamespace,
+			},
+		}
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(evalHub, existingCM).
+			Build()
+
+		reconciler := &EvalHubReconciler{
+			Client:        fakeClient,
+			Scheme:        scheme,
+			EventRecorder: record.NewFakeRecorder(10),
+		}
+
+		err := reconciler.createTenantServiceCAConfigMap(ctx, evalHub, tenantNamespace)
+		require.NoError(t, err)
+
+		cm := &corev1.ConfigMap{}
+		err = fakeClient.Get(ctx, types.NamespacedName{
+			Name:      cmName,
+			Namespace: tenantNamespace,
+		}, cm)
+		require.NoError(t, err)
+
+		assert.Equal(t, "true", cm.Annotations["service.beta.openshift.io/inject-cabundle"])
+	})
+}
+
+// TestEvalHubReconciler_reconcileTenantNamespaces verifies that tenant namespace
+// reconciliation creates the job SA, RBAC bindings, and service CA ConfigMap.
+func TestEvalHubReconciler_reconcileTenantNamespaces(t *testing.T) {
+	scheme := runtime.NewScheme()
+	require.NoError(t, corev1.AddToScheme(scheme))
+	require.NoError(t, rbacv1.AddToScheme(scheme))
+	require.NoError(t, evalhubv1alpha1.AddToScheme(scheme))
+
+	ctx := context.Background()
+	instanceNamespace := "opendatahub"
+	tenantNamespace := "team-b"
+	evalHubName := "evalhub"
+
+	evalHub := &evalhubv1alpha1.EvalHub{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      evalHubName,
+			Namespace: instanceNamespace,
+			UID:       "test-uid-789",
+		},
+	}
+
+	t.Run("should provision resources in labelled tenant namespace", func(t *testing.T) {
+		tenantNS := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: tenantNamespace,
+				Labels: map[string]string{
+					tenantLabel: "",
+				},
+			},
+		}
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(evalHub, tenantNS).
+			Build()
+
+		reconciler := &EvalHubReconciler{
+			Client:        fakeClient,
+			Scheme:        scheme,
+			EventRecorder: record.NewFakeRecorder(10),
+		}
+
+		err := reconciler.reconcileTenantNamespaces(ctx, evalHub)
+		require.NoError(t, err)
+
+		// Verify service CA ConfigMap was created
+		cmName := evalHubName + "-service-ca"
+		cm := &corev1.ConfigMap{}
+		err = fakeClient.Get(ctx, types.NamespacedName{
+			Name:      cmName,
+			Namespace: tenantNamespace,
+		}, cm)
+		require.NoError(t, err)
+		assert.Equal(t, "true", cm.Annotations["service.beta.openshift.io/inject-cabundle"])
+	})
+
+	t.Run("should skip instance namespace", func(t *testing.T) {
+		// Label the instance namespace as a tenant — it should be skipped
+		instanceNS := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: instanceNamespace,
+				Labels: map[string]string{
+					tenantLabel: "",
+				},
+			},
+		}
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(evalHub, instanceNS).
+			Build()
+
+		reconciler := &EvalHubReconciler{
+			Client:        fakeClient,
+			Scheme:        scheme,
+			EventRecorder: record.NewFakeRecorder(10),
+		}
+
+		err := reconciler.reconcileTenantNamespaces(ctx, evalHub)
+		require.NoError(t, err)
+
+		// Service CA ConfigMap should NOT exist in instance namespace
+		// (it's created by the main reconcile, not by reconcileTenantNamespaces)
+		cmName := evalHubName + "-service-ca"
+		cm := &corev1.ConfigMap{}
+		err = fakeClient.Get(ctx, types.NamespacedName{
+			Name:      cmName,
+			Namespace: instanceNamespace,
+		}, cm)
+		assert.True(t, errors.IsNotFound(err))
+	})
+
+	t.Run("should not provision in unlabelled namespaces", func(t *testing.T) {
+		unlabelledNS := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "unlabelled-ns",
+			},
+		}
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(evalHub, unlabelledNS).
+			Build()
+
+		reconciler := &EvalHubReconciler{
+			Client:        fakeClient,
+			Scheme:        scheme,
+			EventRecorder: record.NewFakeRecorder(10),
+		}
+
+		err := reconciler.reconcileTenantNamespaces(ctx, evalHub)
+		require.NoError(t, err)
+
+		// Nothing should be created
+		cmName := evalHubName + "-service-ca"
+		cm := &corev1.ConfigMap{}
+		err = fakeClient.Get(ctx, types.NamespacedName{
+			Name:      cmName,
+			Namespace: "unlabelled-ns",
+		}, cm)
+		assert.True(t, errors.IsNotFound(err))
+	})
+
+	t.Run("should clean up resources when tenant label is removed", func(t *testing.T) {
+		// Namespace WITHOUT the tenant label but WITH stale resources
+		staleNS := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "former-tenant",
+			},
+		}
+
+		// Simulate stale resources left from when the namespace was a tenant
+		staleSA := &corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "evalhub-opendatahub-job",
+				Namespace: "former-tenant",
+				Labels:    jobResourceLabels(evalHub, "evalhub-opendatahub-job"),
+			},
+		}
+		staleRB := &rbacv1.RoleBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "evalhub-former-tenant-job-writer-rb",
+				Namespace: "former-tenant",
+				Labels:    jobResourceLabels(evalHub, "evalhub-former-tenant-job-writer-rb"),
+			},
+			RoleRef: rbacv1.RoleRef{
+				Kind:     "ClusterRole",
+				Name:     jobsWriterClusterRoleName,
+				APIGroup: rbacv1.GroupName,
+			},
+		}
+		staleCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      evalHubName + "-service-ca",
+				Namespace: "former-tenant",
+				Labels:    jobResourceLabels(evalHub, evalHubName+"-service-ca"),
+			},
+		}
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(evalHub, staleNS, staleSA, staleRB, staleCM).
+			Build()
+
+		reconciler := &EvalHubReconciler{
+			Client:        fakeClient,
+			Scheme:        scheme,
+			EventRecorder: record.NewFakeRecorder(10),
+		}
+
+		err := reconciler.reconcileTenantNamespaces(ctx, evalHub)
+		require.NoError(t, err)
+
+		// All stale resources should be deleted
+		sa := &corev1.ServiceAccount{}
+		err = fakeClient.Get(ctx, types.NamespacedName{
+			Name: staleSA.Name, Namespace: "former-tenant",
+		}, sa)
+		assert.True(t, errors.IsNotFound(err), "stale SA should be deleted")
+
+		rb := &rbacv1.RoleBinding{}
+		err = fakeClient.Get(ctx, types.NamespacedName{
+			Name: staleRB.Name, Namespace: "former-tenant",
+		}, rb)
+		assert.True(t, errors.IsNotFound(err), "stale RoleBinding should be deleted")
+
+		cm := &corev1.ConfigMap{}
+		err = fakeClient.Get(ctx, types.NamespacedName{
+			Name: staleCM.Name, Namespace: "former-tenant",
+		}, cm)
+		assert.True(t, errors.IsNotFound(err), "stale ConfigMap should be deleted")
+	})
+
+	t.Run("should create MLFlow service SA RoleBinding in tenant namespace", func(t *testing.T) {
+		// This is the cross-namespace case: EvalHub runs in instanceNamespace but jobs
+		// run in tenantNamespace. The service SA must be able to create MLFlow experiments
+		// in the tenant workspace, so a RoleBinding is needed there too.
+		tenantNS := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   tenantNamespace,
+				Labels: map[string]string{tenantLabel: ""},
+			},
+		}
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(evalHub, tenantNS).
+			Build()
+
+		reconciler := &EvalHubReconciler{
+			Client:        fakeClient,
+			Scheme:        scheme,
+			EventRecorder: record.NewFakeRecorder(10),
+		}
+
+		err := reconciler.reconcileTenantNamespaces(ctx, evalHub)
+		require.NoError(t, err)
+
+		rbName := normalizeDNS1123LabelValue(evalHubName + "-" + instanceNamespace + "-mlflow-service-rb")
+		rb := &rbacv1.RoleBinding{}
+		err = fakeClient.Get(ctx, types.NamespacedName{
+			Name:      rbName,
+			Namespace: tenantNamespace,
+		}, rb)
+		require.NoError(t, err, "MLFlow service SA RoleBinding should exist in tenant namespace")
+
+		// Must reference the full MLFlow access ClusterRole
+		assert.Equal(t, "ClusterRole", rb.RoleRef.Kind)
+		assert.Equal(t, mlflowAccessClusterRoleName, rb.RoleRef.Name)
+		assert.Equal(t, rbacv1.GroupName, rb.RoleRef.APIGroup)
+
+		// Subject is the service SA from instanceNamespace, not the tenant namespace
+		svcSAName := generateServiceAccountName(evalHub)
+		require.Len(t, rb.Subjects, 1)
+		assert.Equal(t, "ServiceAccount", rb.Subjects[0].Kind)
+		assert.Equal(t, svcSAName, rb.Subjects[0].Name)
+		assert.Equal(t, instanceNamespace, rb.Subjects[0].Namespace)
+	})
+
+	t.Run("should not clean up resources in active tenant namespaces", func(t *testing.T) {
+		// Namespace WITH the tenant label and resources
+		activeNS := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "active-tenant",
+				Labels: map[string]string{tenantLabel: ""},
+			},
+		}
+
+		activeSA := &corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "evalhub-opendatahub-job",
+				Namespace: "active-tenant",
+				Labels:    jobResourceLabels(evalHub, "evalhub-opendatahub-job"),
+			},
+		}
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(evalHub, activeNS, activeSA).
+			Build()
+
+		reconciler := &EvalHubReconciler{
+			Client:        fakeClient,
+			Scheme:        scheme,
+			EventRecorder: record.NewFakeRecorder(10),
+		}
+
+		err := reconciler.reconcileTenantNamespaces(ctx, evalHub)
+		require.NoError(t, err)
+
+		// SA should still exist
+		sa := &corev1.ServiceAccount{}
+		err = fakeClient.Get(ctx, types.NamespacedName{
+			Name: activeSA.Name, Namespace: "active-tenant",
+		}, sa)
+		require.NoError(t, err, "active tenant SA should not be deleted")
 	})
 }
