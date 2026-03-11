@@ -1,0 +1,8 @@
+resources:
+  - provider-garak.yaml
+  - provider-garak-kfp.yaml
+  - provider-guidellm.yaml
+  - provider-lighteval.yaml
+  - provider-lm-evaluation-harness.yaml
+
+namespace: system
