@@ -242,7 +242,10 @@ func (r *GuardrailsOrchestratorReconciler) Reconcile(ctx context.Context, req ct
 			if client.IgnoreNotFound(err) != nil {
 				return ctrl.Result{}, err
 			}
-			return ctrl.Result{}, nil
+			log.Info("Referenced orchestrator ConfigMap not found yet; retrying",
+				"ConfigMap.Name", *orchestrator.Spec.OrchestratorConfig,
+				"ConfigMap.Namespace", orchestrator.Namespace)
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
 	}
 
@@ -388,7 +391,9 @@ func (r *GuardrailsOrchestratorReconciler) SetupWithManager(mgr ctrl.Manager) er
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gorchv1alpha1.GuardrailsOrchestrator{}).
 		Owns(&appsv1.Deployment{}).
-		// Add a watch for changes to orchestrator-config or gateway-config ConfigMaps
+		// Watch for changes to orchestrator-config or gateway-config ConfigMaps.
+		// OnlyMetadata caches only object metadata (~1KB each) instead of full
+		// objects, preventing OOM when many ConfigMaps exist cluster-wide.
 		Watches(
 			&corev1.ConfigMap{},
 			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
@@ -420,6 +425,7 @@ func (r *GuardrailsOrchestratorReconciler) SetupWithManager(mgr ctrl.Manager) er
 				predicate.ResourceVersionChangedPredicate{},
 				predicate.GenerationChangedPredicate{},
 			)),
+			builder.OnlyMetadata,
 		).
 		// Watch for changes to any matching InferenceService
 		Watches(
