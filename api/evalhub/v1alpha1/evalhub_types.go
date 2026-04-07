@@ -22,16 +22,43 @@ type EvalHub struct {
 
 // DatabaseSpec defines database configuration for EvalHub
 type DatabaseSpec struct {
-	// Name of the K8s Secret containing a pre-composed db-url key
-	Secret string `json:"secret"`
-	// Maximum number of open database connections
+	// Type of the database backend. Must be explicitly set.
+	// +kubebuilder:validation:Enum=sqlite;postgresql
+	Type string `json:"type"`
+	// Name of the K8s Secret containing a pre-composed db-url key.
+	// Required when type is "postgresql"; ignored for "sqlite".
+	// +optional
+	Secret string `json:"secret,omitempty"`
+	// Maximum number of open database connections (postgresql only)
 	// +kubebuilder:default:=25
 	// +optional
 	MaxOpenConns int `json:"maxOpenConns,omitempty"`
-	// Maximum number of idle database connections
+	// Maximum number of idle database connections (postgresql only)
 	// +kubebuilder:default:=5
 	// +optional
 	MaxIdleConns int `json:"maxIdleConns,omitempty"`
+}
+
+// OTELSpec defines OpenTelemetry configuration for EvalHub.
+// Its presence in the CR spec implies OTEL is enabled.
+type OTELSpec struct {
+	// +kubebuilder:default:="otlp-grpc"
+	// +kubebuilder:validation:Enum=otlp-grpc;otlp-http;stdout
+	ExporterType     string `json:"exporterType,omitempty"`
+	ExporterEndpoint string `json:"exporterEndpoint,omitempty"`
+	// +kubebuilder:default:=false
+	ExporterInsecure bool `json:"exporterInsecure,omitempty"`
+	// Trace sampling ratio as a string-encoded float between "0" and "1" (e.g. "0.5").
+	// Defaults to "1.0" (sample everything) when omitted.
+	// +kubebuilder:default:="1.0"
+	// +optional
+	SamplingRatio string `json:"samplingRatio,omitempty"`
+	// +kubebuilder:default:=true
+	EnableTracing bool `json:"enableTracing,omitempty"`
+	// +optional
+	EnableMetrics bool `json:"enableMetrics,omitempty"`
+	// +optional
+	EnableLogs bool `json:"enableLogs,omitempty"`
 }
 
 // EvalHubSpec defines the desired state of EvalHub
@@ -45,11 +72,30 @@ type EvalHubSpec struct {
 	// +optional
 	Env []corev1.EnvVar `json:"env,omitempty"`
 
+	// Providers is the list of OOTB provider names to mount into the deployment.
+	// Each name must match a provider-name label on a ConfigMap in the operator namespace.
+	// +kubebuilder:default:={"garak","guidellm","lighteval","lm-evaluation-harness"}
+	// +optional
+	Providers []string `json:"providers,omitempty"`
+
+	// Collections is the list of OOTB collection names to mount into the deployment.
+	// Each name must match a collection-name label on a ConfigMap in the operator namespace.
+	// +optional
+	Collections []string `json:"collections,omitempty"`
+
 	// Database configuration for persistent storage.
-	// When set, the operator configures PostgreSQL via the referenced secret.
-	// When omitted, the service uses its default (in-memory SQLite).
+	// This field is required: the operator will not start the service without
+	// an explicit database configuration.
+	// Set type to "postgresql" with a secret reference, or "sqlite" for
+	// lightweight/development deployments.
 	// +optional
 	Database *DatabaseSpec `json:"database,omitempty"`
+
+	// OpenTelemetry configuration for observability.
+	// When set, the operator includes OTEL settings in the generated config.
+	// When omitted, the service uses its defaults (OTEL disabled).
+	// +optional
+	Otel *OTELSpec `json:"otel,omitempty"`
 }
 
 // EvalHubStatus defines the observed state of EvalHub
@@ -75,6 +121,9 @@ type EvalHubStatus struct {
 
 	// List of active providers
 	ActiveProviders []string `json:"activeProviders,omitempty"`
+
+	// List of active collections
+	ActiveCollections []string `json:"activeCollections,omitempty"`
 
 	// Last time the status was updated
 	LastUpdateTime *metav1.Time `json:"lastUpdateTime,omitempty"`
@@ -130,7 +179,22 @@ func (e *EvalHubSpec) GetReplicas() int32 {
 	return *e.Replicas
 }
 
-// IsDatabaseConfigured returns true if the database spec is set with a secret name
+// IsDatabaseConfigured returns true if the database spec is set with an explicit type
 func (e *EvalHubSpec) IsDatabaseConfigured() bool {
-	return e.Database != nil && e.Database.Secret != ""
+	return e.Database != nil && e.Database.Type != ""
+}
+
+// IsPostgreSQL returns true if the database type is postgresql
+func (e *EvalHubSpec) IsPostgreSQL() bool {
+	return e.IsDatabaseConfigured() && e.Database.Type == "postgresql"
+}
+
+// IsSQLite returns true if the database type is sqlite
+func (e *EvalHubSpec) IsSQLite() bool {
+	return e.IsDatabaseConfigured() && e.Database.Type == "sqlite"
+}
+
+// IsOTELConfigured returns true if the OTEL spec is set
+func (e *EvalHubSpec) IsOTELConfigured() bool {
+	return e.Otel != nil
 }
