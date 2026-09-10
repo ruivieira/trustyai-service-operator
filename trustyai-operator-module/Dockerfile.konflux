@@ -1,0 +1,52 @@
+# Build the trustyai-operator-module-controller binary
+FROM registry.redhat.io/ubi9/go-toolset:1.26@sha256:d36470d5258da00f618b7aca9bdaab8e05134aa938bd6c42d9bd17d50ed45e76 AS builder
+ARG TARGETOS
+ARG TARGETARCH
+
+ARG VERSION=unknown
+
+WORKDIR /go/src/github.com/trustyai-explainability/trustyai-operator-module
+
+# Cache module downloads before copying source
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source
+COPY cmd/ cmd/
+COPY pkg/ pkg/
+
+USER root
+RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    GOEXPERIMENT=strictfipsruntime \
+    GOFLAGS=-mod=readonly \
+    go build -tags strictfipsruntime -a \
+    -ldflags "-X github.com/trustyai-explainability/trustyai-operator-module/pkg/trustyaimodule.Version=${VERSION}" \
+    -o manager ./cmd/trustyai-operator-module
+
+# Bundle manifests template into the image
+COPY config/manifests-template/ config/manifests-template/
+COPY hack/get_trustyai_manifests.sh hack/
+RUN bash hack/get_trustyai_manifests.sh
+
+# Runtime image
+FROM registry.redhat.io/ubi9/ubi-minimal-pqc@sha256:8a842ac769de709143e4edeace516f2008dfdc431b64670ad3353fa323b44736
+ARG CI_CONTAINER_VERSION=latest
+
+WORKDIR /
+COPY --from=builder /go/src/github.com/trustyai-explainability/trustyai-operator-module/manager .
+COPY --from=builder /opt/manifests-template /opt/manifests-template
+
+RUN microdnf install -y shadow-utils && \
+    useradd -u 1000 -r -g 0 -s /sbin/nologin trustyai && \
+    microdnf clean all && \
+    chgrp -R 0 /opt && chmod -R g=u /opt
+
+USER 1000
+
+ENTRYPOINT ["/manager"]
+
+LABEL com.redhat.component="odh-trustyai-operator-module-container" \
+      name="managed-open-data-hub/odh-trustyai-operator-module-rhel9" \
+      version="${CI_CONTAINER_VERSION}" \
+      summary="TrustyAI Operator Module Controller" \
+      description="ODH/RHOAI DSC component module controller for the TrustyAI Operator"
