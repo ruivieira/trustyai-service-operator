@@ -14,7 +14,9 @@ import (
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/deploy"
 	statusPkg "github.com/opendatahub-io/odh-platform-utilities/pkg/status"
 	platformv1alpha1 "github.com/trustyai-explainability/trustyai-operator-module/pkg/apis/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -42,12 +44,15 @@ type TrustyAIModuleReconciler struct {
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=trustyais/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=trustyais/finalizers,verbs=update
 // +kubebuilder:rbac:groups=serving.kserve.io,resources=inferenceservices,verbs=get;list
-// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=prometheuses,verbs=get;list
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=prometheuses,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch;update
-// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;patch
-// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;patch
-// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;patch
+// +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;patch
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;patch
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;patch
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 
 func (r *TrustyAIModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -110,6 +115,8 @@ func (r *TrustyAIModuleReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.handleRemoval(ctx, module)
 	}
 
+	enabledServices := effectiveEnabledServices(module.Spec.EnabledServices)
+
 	// Build the condition manager for this reconcile cycle.
 	condMgr := r.newConditionManager(module)
 
@@ -147,7 +154,7 @@ func (r *TrustyAIModuleReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		)
 	}
 
-	if err := r.reconcileComponent(ctx, module, condMgr); err != nil {
+	if err := r.reconcileComponent(ctx, module, condMgr, enabledServices); err != nil {
 		logger.Error(err, "Failed to deploy workload operator")
 		module.Status.ObservedGeneration = module.Generation
 		condMgr.Sort()
@@ -165,7 +172,7 @@ func (r *TrustyAIModuleReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	r.updateHealthStatus(ctx, module, condMgr)
+	r.updateHealthStatus(ctx, module, condMgr, enabledServices)
 	r.updateReleases(module)
 	if err := r.updatePlatformRelease(ctx, module); err != nil {
 		logger.Error(err, "Failed to update platform release")
@@ -211,6 +218,12 @@ func (r *TrustyAIModuleReconciler) handleDeletion(ctx context.Context, module *p
 			return ctrl.Result{}, err
 		}
 
+		if err := r.deleteClusterScopedRBAC(ctx); err != nil {
+			logger.Error(err, "Failed to delete cluster-scoped RBAC during cleanup")
+			r.EventRecorder.Event(module, "Warning", "CleanupFailed", "Failed to delete cluster-scoped RBAC during cleanup")
+			return ctrl.Result{}, err
+		}
+
 		controllerutil.RemoveFinalizer(module, FinalizerName)
 		if err := r.Update(ctx, module); err != nil {
 			logger.Error(err, "Failed to remove finalizer")
@@ -242,6 +255,7 @@ func (r *TrustyAIModuleReconciler) handleRemoval(ctx context.Context, module *pl
 		conditions.WithReason("ModuleRemoved"),
 		conditions.WithMessage("Module is not deployed"),
 		conditions.WithObservedGeneration(module.Generation),
+		conditions.WithSeverity(common.ConditionSeverityInfo),
 	)
 
 	module.Status.Phase = common.PhaseNotReady
@@ -260,9 +274,21 @@ func (r *TrustyAIModuleReconciler) handleRemoval(ctx context.Context, module *pl
 	return ctrl.Result{}, nil
 }
 
-func (r *TrustyAIModuleReconciler) buildHealthCheckers(module *platformv1alpha1.TrustyAI) []ServiceHealthChecker {
+func effectiveEnabledServices(es platformv1alpha1.EnabledServices) platformv1alpha1.EnabledServices {
+	if es == (platformv1alpha1.EnabledServices{}) {
+		return platformv1alpha1.EnabledServices{
+			TAS:            true,
+			LMES:           true,
+			EvalHub:        true,
+			GORCH:          true,
+			NemoGuardrails: true,
+		}
+	}
+	return es
+}
+
+func (r *TrustyAIModuleReconciler) buildHealthCheckers(es platformv1alpha1.EnabledServices) []ServiceHealthChecker {
 	var checkers []ServiceHealthChecker
-	es := module.Spec.EnabledServices
 	if es.TAS {
 		checkers = append(checkers, NewRunningServiceChecker("TAS", r.Client, r.Namespace))
 	}
@@ -281,10 +307,15 @@ func (r *TrustyAIModuleReconciler) buildHealthCheckers(module *platformv1alpha1.
 	return checkers
 }
 
-func (r *TrustyAIModuleReconciler) updateHealthStatus(ctx context.Context, module *platformv1alpha1.TrustyAI, condMgr *conditions.Manager) {
+func (r *TrustyAIModuleReconciler) updateHealthStatus(
+	ctx context.Context,
+	module *platformv1alpha1.TrustyAI,
+	condMgr *conditions.Manager,
+	es platformv1alpha1.EnabledServices,
+) {
 	logger := log.FromContext(ctx)
 
-	healthCheckers := r.buildHealthCheckers(module)
+	healthCheckers := r.buildHealthCheckers(es)
 	allHealthy := true
 	partiallyHealthy := false
 	var unhealthyReasons []string
@@ -318,6 +349,7 @@ func (r *TrustyAIModuleReconciler) updateHealthStatus(ctx context.Context, modul
 			conditions.WithReason("FullyFunctional"),
 			conditions.WithMessage("All services are fully functional"),
 			conditions.WithObservedGeneration(module.Generation),
+			conditions.WithSeverity(common.ConditionSeverityInfo),
 		)
 	} else {
 		module.Status.Phase = common.PhaseNotReady
@@ -337,12 +369,14 @@ func (r *TrustyAIModuleReconciler) updateHealthStatus(ctx context.Context, modul
 				conditions.WithReason("PartialFunctionality"),
 				conditions.WithMessage("Some services are unavailable: %s", strings.Join(unhealthyReasons, "; ")),
 				conditions.WithObservedGeneration(module.Generation),
+				conditions.WithSeverity(common.ConditionSeverityInfo),
 			)
 		} else {
 			condMgr.MarkTrue(string(common.ConditionTypeDegraded),
 				conditions.WithReason("AllServicesUnhealthy"),
 				conditions.WithMessage("All services are unavailable: %s", strings.Join(unhealthyReasons, "; ")),
 				conditions.WithObservedGeneration(module.Generation),
+				conditions.WithSeverity(common.ConditionSeverityInfo),
 			)
 		}
 	}
@@ -378,6 +412,7 @@ func (r *TrustyAIModuleReconciler) reconcileComponent(
 	ctx context.Context,
 	module *platformv1alpha1.TrustyAI,
 	condMgr *conditions.Manager,
+	es platformv1alpha1.EnabledServices,
 ) error {
 	if r.Deployer == nil {
 		return nil
@@ -395,6 +430,15 @@ func (r *TrustyAIModuleReconciler) reconcileComponent(
 
 	if len(objs) == 0 {
 		return nil
+	}
+
+	if err := injectEnabledServices(objs, es); err != nil {
+		condMgr.MarkFalse(string(common.ConditionTypeProvisioningSucceeded),
+			conditions.WithReason("RenderFailed"),
+			conditions.WithMessage("Failed to configure enabled services: %v", err),
+			conditions.WithObservedGeneration(module.Generation),
+		)
+		return err
 	}
 
 	if err := r.Deployer.Deploy(ctx, deploy.DeployInput{
@@ -417,5 +461,9 @@ func (r *TrustyAIModuleReconciler) reconcileComponent(
 func (r *TrustyAIModuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&platformv1alpha1.TrustyAI{}).
+		Owns(&corev1.ServiceAccount{}).
+		Owns(&corev1.Service{}).
+		Owns(&appsv1.Deployment{}).
+		Owns(&rbacv1.RoleBinding{}).
 		Complete(r)
 }
