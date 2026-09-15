@@ -30,11 +30,12 @@ var _ = Describe("TrustyAI Module Reconciler", func() {
 
 	newReconciler := func() *TrustyAIModuleReconciler {
 		return &TrustyAIModuleReconciler{
-			Client:               k8sClient,
-			Scheme:               k8sClient.Scheme(),
-			Namespace:            testNamespace,
-			EventRecorder:        record.NewFakeRecorder(100),
-			SkipDependencyChecks: true,
+			Client:                k8sClient,
+			Scheme:                k8sClient.Scheme(),
+			Namespace:             testNamespace,
+			ManifestsTemplatePath: "../../config/manifests-template",
+			EventRecorder:         record.NewFakeRecorder(100),
+			SkipDependencyChecks:  true,
 		}
 	}
 
@@ -105,7 +106,7 @@ var _ = Describe("TrustyAI Module Reconciler", func() {
 			Expect(module.Status.ObservedGeneration).To(Equal(module.Generation))
 		})
 
-		It("does not mark omitted enabled services ready when their workloads are unhealthy", func() {
+		It("does not report ready when default service workloads are absent", func() {
 			r := newReconciler()
 			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
@@ -119,7 +120,36 @@ var _ = Describe("TrustyAI Module Reconciler", func() {
 			readyCond := findCondition(module.Status.Conditions, string(common.ConditionTypeReady))
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(readyCond.Reason).To(Equal("ServicesUnhealthy"))
+			Expect(readyCond.Reason).To(Equal("ServicesNotReady"))
+
+			degradedCond := findCondition(module.Status.Conditions, string(common.ConditionTypeDegraded))
+			Expect(degradedCond).NotTo(BeNil())
+			Expect(degradedCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(degradedCond.Reason).To(Equal("WaitingForOperands"))
+		})
+
+		It("reports an explicitly enabled service as unhealthy when its workload is absent", func() {
+			module := &platformv1alpha1.TrustyAI{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, module)).To(Succeed())
+			module.Spec.EnabledServices.TAS = true
+			Expect(k8sClient.Update(ctx, module)).To(Succeed())
+
+			r := newReconciler()
+			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, module)).To(Succeed())
+			Expect(module.Status.Phase).To(Equal(common.PhaseNotReady))
+			readyCond := findCondition(module.Status.Conditions, string(common.ConditionTypeReady))
+			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCond.Reason).To(Equal("ServicesNotReady"))
+			provisioningCond := findCondition(module.Status.Conditions, string(common.ConditionTypeProvisioningSucceeded))
+			Expect(provisioningCond.Status).To(Equal(metav1.ConditionTrue))
+			degradedCond := findCondition(module.Status.Conditions, string(common.ConditionTypeDegraded))
+			Expect(degradedCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(degradedCond.Reason).To(Equal("WaitingForOperands"))
 		})
 
 		It("records the platform version handshake in status.releases", func() {
@@ -168,18 +198,20 @@ var _ = Describe("TrustyAI Module Reconciler", func() {
 		})
 
 		It("removes cluster-scoped RBAC on deletion", func() {
+			clusterRoleName := "trustyai-service-operator-tls-profile-reader"
+			clusterRoleBindingName := "trustyai-service-operator-tls-profile-reader-binding"
 			cr := &rbacv1.ClusterRole{
-				ObjectMeta: metav1.ObjectMeta{Name: clusterRoleNames[0]},
+				ObjectMeta: metav1.ObjectMeta{Name: clusterRoleName},
 				Rules:      []rbacv1.PolicyRule{{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"}}},
 			}
 			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
 
 			crb := &rbacv1.ClusterRoleBinding{
-				ObjectMeta: metav1.ObjectMeta{Name: clusterRoleBindingNames[0]},
+				ObjectMeta: metav1.ObjectMeta{Name: clusterRoleBindingName},
 				RoleRef: rbacv1.RoleRef{
 					APIGroup: "rbac.authorization.k8s.io",
 					Kind:     "ClusterRole",
-					Name:     clusterRoleNames[0],
+					Name:     clusterRoleName,
 				},
 				Subjects: []rbacv1.Subject{{Kind: "ServiceAccount", Name: "trustyai-service-operator", Namespace: testNamespace}},
 			}
@@ -196,8 +228,8 @@ var _ = Describe("TrustyAI Module Reconciler", func() {
 			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(errors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: clusterRoleNames[0]}, cr))).To(BeTrue())
-			Expect(errors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: clusterRoleBindingNames[0]}, crb))).To(BeTrue())
+			Expect(errors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: clusterRoleName}, cr))).To(BeTrue())
+			Expect(errors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: clusterRoleBindingName}, crb))).To(BeTrue())
 		})
 
 		It("sets Ready=False and Degraded=False when ManagementState is Removed", func() {

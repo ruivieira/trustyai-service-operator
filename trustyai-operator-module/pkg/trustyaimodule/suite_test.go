@@ -49,11 +49,17 @@ func TestTrustyAIModule(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+	Expect(os.Setenv("TRUSTYAI_MANIFESTS_TARGET", filepath.Join(os.TempDir(), "trustyai-module-manifests-test"))).To(Succeed())
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "..", "config", "crd", "bases"),
+			filepath.Join("..", "..", "config", "manifests-template", "components", "evalhub", "crd"),
+			filepath.Join("..", "..", "config", "manifests-template", "components", "gorch", "crd"),
+			filepath.Join("..", "..", "config", "manifests-template", "components", "lmes", "crd"),
+			filepath.Join("..", "..", "config", "manifests-template", "components", "nemo-guardrails", "crd"),
+			filepath.Join("..", "..", "config", "manifests-template", "components", "tas", "crd"),
 			filepath.Join("..", "..", "..", "tests", "crds"),
 		},
 		ErrorIfCRDPathMissing: true,
