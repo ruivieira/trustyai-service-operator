@@ -1,5 +1,6 @@
 apiVersion: tekton.dev/v1
 kind: PipelineRun
+#
 metadata:
   annotations:
     build.appstudio.openshift.io/repo: https://github.com/opendatahub-io/trustyai-service-operator?rev={{revision}}
@@ -12,9 +13,9 @@ metadata:
   creationTimestamp: null
   labels:
     appstudio.openshift.io/application: opendatahub-builds
-    appstudio.openshift.io/component: odh-trustyai-service-operator-ci
+    appstudio.openshift.io/component: odh-trustyai-module-operator-ci
     pipelines.appstudio.openshift.io/type: build
-  name: odh-trustyai-service-operator-on-push
+  name: odh-trustyai-module-operator-on-release-push
   namespace: open-data-hub-tenant
 spec:
   params:
@@ -23,11 +24,11 @@ spec:
   - name: revision
     value: '{{revision}}'
   - name: output-image
-    value: quay.io/opendatahub/trustyai-service-operator:odh-stable
+    value: quay.io/opendatahub/odh-trustyai-module-operator:3.6EA1
   - name: dockerfile
     value: Dockerfile
   - name: path-context
-    value: .
+    value: ./trustyai-operator-module/
   pipelineRef:
     resolver: git
     params:
@@ -38,7 +39,7 @@ spec:
     - name: pathInRepo
       value: pipeline/multi-arch-container-build.yaml
   taskRunTemplate:
-    serviceAccountName: build-pipeline-odh-trustyai-service-operator
+    serviceAccountName: build-pipeline-odh-trustyai-module-operator-ci
   workspaces:
   - name: git-auth
     secret:

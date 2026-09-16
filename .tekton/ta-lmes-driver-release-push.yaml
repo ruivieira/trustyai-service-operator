@@ -12,9 +12,9 @@ metadata:
   creationTimestamp: null
   labels:
     appstudio.openshift.io/application: opendatahub-builds
-    appstudio.openshift.io/component: odh-trustyai-service-operator-ci
+    appstudio.openshift.io/component: ta-lmes-driver-ci
     pipelines.appstudio.openshift.io/type: build
-  name: odh-trustyai-service-operator-on-push
+  name: ta-lmes-driver-on-release-push
   namespace: open-data-hub-tenant
 spec:
   params:
@@ -23,9 +23,9 @@ spec:
   - name: revision
     value: '{{revision}}'
   - name: output-image
-    value: quay.io/opendatahub/trustyai-service-operator:odh-stable
+    value: quay.io/opendatahub/ta-lmes-driver:odh-stable
   - name: dockerfile
-    value: Dockerfile
+    value: Dockerfile.driver
   - name: path-context
     value: .
   pipelineRef:
@@ -38,7 +38,7 @@ spec:
     - name: pathInRepo
       value: pipeline/multi-arch-container-build.yaml
   taskRunTemplate:
-    serviceAccountName: build-pipeline-odh-trustyai-service-operator
+    serviceAccountName: build-pipeline-ta-lmes-driver
   workspaces:
   - name: git-auth
     secret:
